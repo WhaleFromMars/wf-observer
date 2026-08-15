@@ -16,6 +16,15 @@ cargo run -p showcase-dioxus --features dioxus/desktop
 # launch the game at any point
 ```
 
+## Profiling
+
+[Hotpath](https://hotpath.rs) profiling is opt-in.
+CPU sampling is unavailable on Windows; omit `hotpath/hotpath-cpu` there.
+
+```bash
+cargo run -p local-service --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu
+```
+
 ## License
 
 Licensed under either of:

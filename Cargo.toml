@@ -19,7 +19,7 @@ iroh = { version = "1.0" }
 
 parking_lot = { version = "0.12" }
 fastant = { version = "0.1" }
-hotpath = "0.23"
+hotpath = { version = "0.23" }
 
 
 # Some dependencies can spam this causing perf issues.

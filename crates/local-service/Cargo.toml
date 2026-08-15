@@ -11,11 +11,5 @@ protocol = { path = "../protocol" }
 tokio = { workspace = true }
 hotpath = { workspace = true }
 
-[features]
-# For Profiling
-hotpath = ["hotpath/hotpath"]
-hotpath-cpu = ["hotpath/hotpath-cpu"]
-hotpath-alloc = ["hotpath/hotpath-alloc"]
-
 [lints]
 workspace = true

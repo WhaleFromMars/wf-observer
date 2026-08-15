@@ -1,0 +1,18 @@
+[package]
+name = "showcase-dioxus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+dioxus = { version = "0.7.10" }
+wf-observer = { path = "../../crates/wf-observer" }
+
+[features]
+# We dont expose Desktop/Web/Mobile features as they have not diverged yet
+# Instead prefer using https://crates.io/crates/dioxus-cli with the appropriate target
+# ie: dx serve -p showcase-dioxus --desktop --release
+
+[lints]
+workspace = true

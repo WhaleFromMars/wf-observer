@@ -1,0 +1,23 @@
+name: SemVer checks
+
+on:
+  # pull_request:
+  #   branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semver-checks:
+    name: Check public API compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Check SemVer compatibility
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          rust-toolchain: 1.97.1

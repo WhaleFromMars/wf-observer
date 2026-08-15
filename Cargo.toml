@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/showcase-dioxus",
+    "crates/local-service",
+    "crates/memory-reader",
+    "crates/protocol",
+    "crates/wf-observer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+tokio = { version = "1.53.1", features = ["full"] } # Trim down the feature set later
+iroh = { version = "1.0" }
+
+
+fastant = { version = "0.1" }
+hotpath = "0.23"
+
+
+# Some dependencies can spam this causing perf issues.
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "deny"
+unimplemented = "deny"
+disallowed_types = "deny"
+disallowed_methods = "deny"
+
+# Optimisations for the dev profile.
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Optimize for build time in CI.
+[profile.ci]
+inherits = "dev"
+opt-level = 0
+debug = "line-tables-only"
+codegen-units = 4
+
+[profile.ci.package."*"]
+opt-level = 0

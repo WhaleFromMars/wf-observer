@@ -1,0 +1,65 @@
+# Allows clippy to suggest breaking changes
+avoid-breaking-exported-api = false
+
+disallowed-types = [
+    # Fastant is faster on linux, falls back to std::time::Instant on windows
+    { path = "std::time::Instant", reason = "use fastant::Instant for elapsed-time measurements; use tokio::time::Instant for Tokio timers", replacement = "fastant::Instant" },
+
+    # this is a read-only memory observer. These types represent
+    # memflow write requests or expose an alternate write-capable interface.
+    { path = "memflow::mem::mem_data::WriteDataRaw", reason = "wf-observer must never construct virtual-memory write requests" },
+    { path = "memflow::mem::mem_data::WriteData", reason = "wf-observer must never construct virtual-memory write requests" },
+    { path = "memflow::mem::mem_data::WriteRawIterator", reason = "wf-observer must never construct virtual-memory write requests" },
+    { path = "memflow::mem::mem_data::WriteIterator", reason = "wf-observer must never construct virtual-memory write requests" },
+    { path = "memflow::mem::mem_data::PhysicalWriteData", reason = "wf-observer must never construct physical-memory write requests" },
+    { path = "memflow::mem::mem_data::PhysicalWriteIterator", reason = "wf-observer must never construct physical-memory write requests" },
+    { path = "memflow::mem::mem_data::WriteFailCallback", reason = "wf-observer must never handle virtual-memory write operations" },
+    { path = "memflow::mem::mem_data::WriteCallback", reason = "wf-observer must never handle virtual-memory write operations" },
+    { path = "memflow::mem::mem_data::WriteRawMemOps", reason = "wf-observer must never construct virtual-memory write operations" },
+    { path = "memflow::mem::mem_data::WriteMemOps", reason = "wf-observer must never construct virtual-memory write operations" },
+    { path = "memflow::mem::mem_data::PhysicalWriteMemOps", reason = "wf-observer must never construct physical-memory write operations" },
+    { path = "memflow::mem::memory_view::cursor::MemoryCursor", reason = "memflow::MemoryCursor implements std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::connector::fileio::CloneFile", reason = "this memflow file helper implements std::io::Write; use a read-only connector" },
+    { path = "memflow::connector::fileio::FileIoMemory", reason = "this memflow connector requires a write-capable backing file; use a read-only connector" },
+    { path = "memflow::connector::filemap::MmapInfoMut", reason = "wf-observer must never create writable memory mappings" },
+    { path = "memflow::connector::filemap::WriteMappedFilePhysicalMemory", reason = "wf-observer must never create writable memory mappings" },
+]
+
+disallowed-methods = [
+    # Virtual-memory writes.
+    { path = "memflow::mem::memory_view::MemoryView::write_raw_iter", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::mem::memory_view::MemoryView::write_iter", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::mem::memory_view::MemoryView::write_raw_list", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::mem::memory_view::MemoryView::write_raw", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::mem::memory_view::MemoryView::write", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::mem::memory_view::MemoryView::write_ptr", reason = "wf-observer is read-only and must never write process memory" },
+    { path = "memflow::types::pointer::Pointer::write", reason = "wf-observer is read-only and must never write process memory" },
+
+    # Physical-memory writes.
+    { path = "memflow::mem::phys_mem::PhysicalMemory::phys_write_raw_iter", reason = "wf-observer is read-only and must never write physical memory" },
+    { path = "memflow::mem::phys_mem::PhysicalMemory::phys_write", reason = "wf-observer is read-only and must never write physical memory" },
+
+    # Batched writes. A MemoryViewBatcher also commits queued writes when it is
+    # dropped, so prevent writes from being queued in the first place.
+    { path = "memflow::mem::memory_view::batcher::MemoryViewBatcher::write_raw_iter", reason = "wf-observer is read-only and must never queue memory writes" },
+    { path = "memflow::mem::memory_view::batcher::MemoryViewBatcher::write_raw_into", reason = "wf-observer is read-only and must never queue memory writes" },
+    { path = "memflow::mem::memory_view::batcher::MemoryViewBatcher::write_into", reason = "wf-observer is read-only and must never queue memory writes" },
+    { path = "memflow::mem::memory_view::batcher::MemoryViewBatcher::commit_rw", reason = "this may commit queued writes; let a read-only batcher commit on drop" },
+
+    # A MemoryCursor implements std::io::Write. Disallow every memflow entry
+    # point because Clippy cannot ban std::io::Write only for MemoryCursor.
+    { path = "memflow::mem::memory_view::cursor::MemoryCursor::new", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::mem::memory_view::cursor::MemoryCursor::at", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::mem::memory_view::MemoryView::cursor", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::mem::memory_view::MemoryView::into_cursor", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::mem::memory_view::MemoryView::cursor_at", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+    { path = "memflow::mem::memory_view::MemoryView::into_cursor_at", reason = "memflow::MemoryCursor exposes std::io::Write; use MemoryView read APIs directly" },
+
+    # Writable file-backed connectors.
+    { path = "memflow::connector::fileio::FileIoMemory::new", reason = "wf-observer must never create a write-capable file connector" },
+    { path = "memflow::connector::fileio::FileIoMemory::with_size", reason = "wf-observer must never create a write-capable file connector" },
+    { path = "memflow::connector::fileio::FileIoMemory::with_mem_map", reason = "wf-observer must never create a write-capable file connector" },
+    { path = "memflow::connector::filemap::MmapInfoMut::try_with_filemap_mut", reason = "wf-observer must never create writable memory mappings" },
+    { path = "memflow::connector::filemap::MmapInfoMut::try_with_bufmap_mut", reason = "wf-observer must never create writable memory mappings" },
+    { path = "memflow::connector::filemap::MmapInfoMut::into_connector", reason = "wf-observer must never create writable memory mappings" },
+]

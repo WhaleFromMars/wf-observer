@@ -1,0 +1,13 @@
+[package]
+name = "wf-observer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+protocol = { path = "../protocol" }
+
+hotpath = { workspace = true }
+
+[lints]
+workspace = true

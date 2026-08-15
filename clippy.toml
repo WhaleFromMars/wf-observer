@@ -2,9 +2,6 @@
 avoid-breaking-exported-api = false
 
 disallowed-types = [
-    # Fastant is faster on linux, falls back to std::time::Instant on windows
-    { path = "std::time::Instant", reason = "use fastant::Instant for elapsed-time measurements; use tokio::time::Instant for Tokio timers", replacement = "fastant::Instant" },
-
     # this is a read-only memory observer. These types represent
     # memflow write requests or expose an alternate write-capable interface.
     { path = "memflow::mem::mem_data::WriteDataRaw", reason = "wf-observer must never construct virtual-memory write requests" },
@@ -23,6 +20,16 @@ disallowed-types = [
     { path = "memflow::connector::fileio::FileIoMemory", reason = "this memflow connector requires a write-capable backing file; use a read-only connector" },
     { path = "memflow::connector::filemap::MmapInfoMut", reason = "wf-observer must never create writable memory mappings" },
     { path = "memflow::connector::filemap::WriteMappedFilePhysicalMemory", reason = "wf-observer must never create writable memory mappings" },
+
+    # Fastant is faster on linux, falls back to std::time::Instant on windows
+    { path = "std::time::Instant", reason = "use fastant::Instant for elapsed-time measurements; use tokio::time::Instant for Tokio timers", replacement = "fastant::Instant" },
+
+    # parking_lot's synchronization primitives are smaller, faster, and more flexible.
+    { path = "std::sync::Mutex", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::Mutex" },
+    { path = "std::sync::RwLock", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::RwLock" },
+    { path = "std::sync::Condvar", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::Condvar" },
+    { path = "std::sync::Once", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::Once" },
+
 ]
 
 disallowed-methods = [

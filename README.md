@@ -1,6 +1,6 @@
 # Warframe Observer
 
-A local service that reads memory from a locally running Warframe process on
+A local service (currently foreground, the user must start it) that reads memory from a locally running Warframe process on
 Linux and Windows and makes the data available to other applications.
 
 We only read memory. We never write to it or inject code.
@@ -22,7 +22,7 @@ cargo run -p showcase-dioxus --features dioxus/desktop
 CPU sampling is unavailable on Windows; omit `hotpath/hotpath-cpu` there.
 
 ```bash
-cargo run -p local-service --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu
+cargo run -p local-service --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu -- run
 ```
 
 ## License

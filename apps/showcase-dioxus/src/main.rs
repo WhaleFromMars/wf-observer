@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+#[hotpath::main]
 fn main() {
     dioxus::launch(App);
 }

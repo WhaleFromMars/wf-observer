@@ -7,6 +7,9 @@ license.workspace = true
 [dependencies]
 protocol = { path = "../protocol" }
 
+derive_aliases = { workspace = true }
+serde = { workspace = true }
+
 hotpath = { workspace = true }
 
 [lints]

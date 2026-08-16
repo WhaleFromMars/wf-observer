@@ -8,8 +8,17 @@ license.workspace = true
 memory-reader = { path = "../memory-reader" }
 protocol = { path = "../protocol" }
 
+clap = { workspace = true, features = ["derive"] }
+clap-verbosity-flag = { workspace = true }
+derive_aliases = { workspace = true }
+serde = { workspace = true }
+
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
 tokio = { workspace = true }
-hotpath = { workspace = true }
+hotpath = { workspace = true, features = ["tokio"] }
 
 [lints]
 workspace = true

@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+derive_aliases = { workspace = true }
+serde = { workspace = true }
 
 [lints]
 workspace = true

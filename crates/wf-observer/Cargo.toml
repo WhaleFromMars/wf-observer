@@ -10,6 +10,10 @@ protocol = { path = "../protocol" }
 derive_aliases = { workspace = true }
 serde = { workspace = true }
 
+anyhow = { workspace = true }
+iroh = { workspace = true }
+irpc = { workspace = true }
+irpc-iroh = { workspace = true }
 hotpath = { workspace = true }
 
 [lints]

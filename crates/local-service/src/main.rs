@@ -5,6 +5,7 @@ mod application;
 mod cli;
 mod derive_alias;
 mod prelude;
+mod transport;
 mod update;
 
 use std::process::ExitCode;

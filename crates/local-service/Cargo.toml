@@ -18,7 +18,13 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 tokio = { workspace = true }
+iroh = { workspace = true }
+irpc = { workspace = true }
+irpc-iroh = { workspace = true }
 hotpath = { workspace = true, features = ["tokio"] }
+
+[dev-dependencies]
+wf-observer = { path = "../wf-observer" }
 
 [lints]
 workspace = true

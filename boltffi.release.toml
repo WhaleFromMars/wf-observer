@@ -1,0 +1,11 @@
+# The release workflow builds these native libraries on their matching hosts,
+# then asks BoltFFI to assemble one multi-RID NuGet package without rebuilding.
+[targets.csharp]
+runtime_identifiers = [
+    "osx-arm64",
+    "osx-x64",
+    "linux-x64",
+    "linux-arm64",
+    "win-x64",
+    "win-arm64",
+]

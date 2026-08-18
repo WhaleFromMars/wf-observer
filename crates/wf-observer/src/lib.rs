@@ -12,7 +12,7 @@ extern crate derive_aliases;
 
 mod derive_alias;
 
-pub use iroh::EndpointAddr;
+pub use iroh::{EndpointAddr, EndpointId};
 
 /// Client connection to a running WF Observer service.
 ///
@@ -66,7 +66,7 @@ impl Client {
     }
 
     /// Gracefully closes the client's Iroh endpoint.
-    pub async fn close(self) {
+    pub async fn close(&self) {
         self.endpoint.close().await;
     }
 }

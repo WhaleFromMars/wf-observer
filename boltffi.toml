@@ -1,0 +1,59 @@
+[package]
+name = "wf-observer"
+crate = "wf_observer_ffi"
+version = "0.1.0"
+description = "Generated language bindings for the WF Observer client"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/WhaleFromMars/wf-observer"
+
+[cargo]
+global_args = ["--package", "wf_observer_ffi"]
+
+[targets.apple]
+enabled = true
+include_macos = true
+
+[targets.apple.swift]
+module_name = "WFObserver"
+
+# Android bindings are unsupported. Keep packaging disabled until the binding
+# owns Iroh's required context initialization and has instrumentation coverage.
+[targets.android]
+enabled = false
+
+[targets.android.kotlin]
+package = "dev.whalefrommars.wfobserver"
+
+[targets.java]
+package = "dev.whalefrommars.wfobserver"
+module_name = "WFObserver"
+
+[targets.java.jvm]
+enabled = true
+# Local builds and each release-matrix runner build their current native target.
+# BoltFFI 0.30.1 cannot assemble cross-host JVM outputs with `--no-build`, so
+# the release workflow publishes one JVM bundle per supported target.
+host_targets = ["current"]
+
+[targets.csharp]
+enabled = true
+namespace = "WFObserver"
+package_id = "WFObserver"
+# Local builds and release-matrix jobs build one RID at a time. The release
+# overlay lists every RID when assembling the final NuGet package.
+runtime_identifiers = ["current"]
+
+[targets.wasm]
+enabled = true
+output = "dist/wasm"
+
+[targets.wasm.typescript]
+module_name = "wf_observer"
+
+[targets.wasm.npm]
+package_name = "@whalefrommars/wf-observer"
+targets = ["bundler", "web"]
+
+[targets.python]
+enabled = true
+module_name = "wf_observer"

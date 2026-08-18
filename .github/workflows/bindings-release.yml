@@ -1,0 +1,348 @@
+name: Release bindings
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-bindings-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TARGET_DIR: target
+  CARGO_TERM_COLOR: always
+
+jobs:
+  metadata:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate package versions
+        id: version
+        shell: bash
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer") | .version')"
+          boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
+
+          if [[ -z "$version" || "$version" != "$boltffi_version" ]]; then
+            echo "Cargo version '$version' does not match BoltFFI version '$boltffi_version'" >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag '$GITHUB_REF_NAME' does not match package version 'v$version'" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Desktop bindings (${{ matrix.id }})
+    needs: metadata
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            native_library: libwf_observer_ffi.so
+            java: true
+            python: true
+          - id: linux-arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            native_library: libwf_observer_ffi.so
+            java: true
+            python: true
+          - id: macos-x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            native_library: libwf_observer_ffi.dylib
+            java: true
+            python: true
+          - id: macos-arm64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+            native_library: libwf_observer_ffi.dylib
+            java: true
+            python: true
+          - id: windows-x64
+            runner: windows-2025-vs2026
+            rust_target: x86_64-pc-windows-msvc
+            native_library: wf_observer_ffi.dll
+            java: true
+            python: true
+          - id: windows-arm64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+            native_library: wf_observer_ffi.dll
+            java: false
+            python: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Clang
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang
+
+      - name: Add Windows Clang to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\LLVM\bin"
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.rust_target }}
+
+      - name: Install Java
+        if: matrix.java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Python 3.10
+        id: python310
+        if: matrix.python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.10"
+
+      - name: Install Python 3.11
+        id: python311
+        if: matrix.python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Install Python 3.12
+        id: python312
+        if: matrix.python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Python 3.13
+        id: python313
+        if: matrix.python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - name: Install Python 3.14
+        id: python314
+        if: matrix.python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: true
+          key: release-bindings-${{ matrix.id }}
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      - name: Package JVM bindings
+        if: matrix.java
+        run: boltffi pack java --release --deny-skipped
+
+      - name: Upload JVM bundle
+        if: matrix.java
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wf-observer-java-${{ matrix.id }}-${{ needs.metadata.outputs.version }}
+          path: dist/java
+          if-no-files-found: error
+
+      - name: Package Python bindings
+        if: matrix.python
+        run: >-
+          boltffi pack python --release --deny-skipped
+          --python "${{ steps.python310.outputs.python-path }}"
+          --python "${{ steps.python311.outputs.python-path }}"
+          --python "${{ steps.python312.outputs.python-path }}"
+          --python "${{ steps.python313.outputs.python-path }}"
+          --python "${{ steps.python314.outputs.python-path }}"
+
+      - name: Upload Python wheel
+        if: matrix.python
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wf-observer-python-${{ matrix.id }}-${{ needs.metadata.outputs.version }}
+          path: dist/python/wheelhouse/*.whl
+          if-no-files-found: error
+
+      # BoltFFI exposes its C# native build through `pack`; the single-RID
+      # package produced here is discarded after extracting its native library.
+      - name: Build C# native library
+        run: boltffi pack csharp --release --deny-skipped
+
+      - name: Upload C# native library
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: csharp-native-${{ matrix.id }}
+          path: target/${{ matrix.rust_target }}/release/${{ matrix.native_library }}
+          if-no-files-found: error
+          retention-days: 1
+
+  csharp:
+    name: Assemble C# package
+    needs: [metadata, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache BoltFFI CLI
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: true
+          key: release-bindings-csharp
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      - name: Download C# native libraries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: csharp-native-*
+          path: csharp-native
+
+      - name: Restore Cargo artifact layout
+        shell: pwsh
+        run: |
+          $artifacts = @(
+              @{ Name = "linux-x64"; Triple = "x86_64-unknown-linux-gnu"; Library = "libwf_observer_ffi.so" },
+              @{ Name = "linux-arm64"; Triple = "aarch64-unknown-linux-gnu"; Library = "libwf_observer_ffi.so" },
+              @{ Name = "macos-x64"; Triple = "x86_64-apple-darwin"; Library = "libwf_observer_ffi.dylib" },
+              @{ Name = "macos-arm64"; Triple = "aarch64-apple-darwin"; Library = "libwf_observer_ffi.dylib" },
+              @{ Name = "windows-x64"; Triple = "x86_64-pc-windows-msvc"; Library = "wf_observer_ffi.dll" },
+              @{ Name = "windows-arm64"; Triple = "aarch64-pc-windows-msvc"; Library = "wf_observer_ffi.dll" }
+          )
+
+          foreach ($artifact in $artifacts) {
+              $source = Join-Path "csharp-native/csharp-native-$($artifact.Name)" $artifact.Library
+              $destination = "target/$($artifact.Triple)/release"
+              New-Item -ItemType Directory -Force -Path $destination | Out-Null
+              Copy-Item -LiteralPath $source -Destination $destination
+          }
+
+      - name: Assemble multi-platform NuGet package
+        run: boltffi --overlay boltffi.release.toml pack csharp --release --no-build --deny-skipped
+
+      - name: Upload NuGet package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wf-observer-csharp-${{ needs.metadata.outputs.version }}
+          path: dist/csharp/packages/*.nupkg
+          if-no-files-found: error
+
+  apple:
+    name: Package Apple bindings
+    needs: metadata
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add \
+            aarch64-apple-darwin \
+            aarch64-apple-ios \
+            aarch64-apple-ios-sim \
+            x86_64-apple-darwin \
+            x86_64-apple-ios
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: true
+          key: release-bindings-apple
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      - name: Package Apple bindings
+        run: boltffi pack apple --release --deny-skipped
+
+      - name: Upload Apple package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wf-observer-apple-${{ needs.metadata.outputs.version }}
+          path: dist/apple
+          if-no-files-found: error
+
+  wasm:
+    name: Package browser bindings
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-bin: true
+          key: release-bindings-wasm
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      - name: Package browser bindings
+        run: boltffi pack wasm --release --deny-skipped
+
+      - name: Upload browser package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wf-observer-wasm-${{ needs.metadata.outputs.version }}
+          path: dist/wasm
+          if-no-files-found: error

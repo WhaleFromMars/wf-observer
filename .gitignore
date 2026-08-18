@@ -1,2 +1,13 @@
 /target
+/dist
 /research
+.venv/
+__pycache__/
+*.py[cod]
+/examples/.gradle/
+/examples/.kotlin/
+/examples/**/build/
+/examples/**/bin/
+/examples/**/obj/
+/examples/swift/**/.build/
+/examples/swift/**/.swiftpm/

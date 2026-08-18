@@ -1,7 +1,7 @@
 //! Iroh transport endpoint and RPC handler.
 
 use anyhow::Context as _;
-use iroh::{Endpoint, endpoint::presets, protocol::Router};
+use iroh::{Endpoint, SecretKey, endpoint::presets, protocol::Router};
 use irpc::WithChannels;
 use irpc_iroh::IrohProtocol;
 use protocol::{ObserverMessage, ObserverProtocol, Pong};
@@ -33,10 +33,10 @@ impl Server {
     }
 }
 
-pub(crate) async fn start() -> anyhow::Result<Server> {
-    // TODO: Persist and reuse the secret key before enabling updates; reconnecting
-    // clients depend on the service retaining its EndpointId across restarts.
-    let endpoint = Endpoint::bind(presets::N0)
+pub(crate) async fn start(secret_key: SecretKey) -> anyhow::Result<Server> {
+    let endpoint = Endpoint::builder(presets::N0)
+        .secret_key(secret_key)
+        .bind()
         .await
         .context("failed to bind the Iroh endpoint")?;
 

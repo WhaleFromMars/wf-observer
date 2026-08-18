@@ -10,11 +10,19 @@ We only read memory. We never write to it or inject code.
 ```bash
 # be at the root of the repo
 # start the local service
-cargo run -p local-service
+cargo run -p local-service -- run
 # then in a separate terminal run the showcase
-cargo run -p showcase-dioxus --features dioxus/desktop
+cargo run -p example-rust-dioxus --features dioxus/desktop
 # launch the game at any point
 ```
+
+Foreign-language clients are generated from `wf_observer_ffi` by
+[BoltFFI](https://www.boltffi.dev/). Swift, Java, C#, Python, and browser
+TypeScript are configured in `boltffi.toml`. Android bindings are currently
+unsupported and disabled.
+
+See the [examples](examples/README.md) for the Dioxus showcase and
+minimal generated-binding consumers.
 
 ## Profiling
 

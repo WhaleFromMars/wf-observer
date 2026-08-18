@@ -1,0 +1,6 @@
+# Pull-request CI needs only the macOS slice used by its runner. Release builds
+# continue to use the complete Apple target matrix from boltffi.toml.
+[targets.apple]
+ios_architectures = []
+simulator_architectures = []
+macos_architectures = ["arm64"]

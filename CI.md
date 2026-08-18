@@ -1,6 +1,7 @@
 # Continuous integration
 
 This document describes the CI workflow. Where applicable, each section ends with the equivalent command for running the check locally.
+I am new to CI, this probably does not follow best practices, feel free to suggest improvements.
 
 ## Core Rust Checks
 
@@ -11,11 +12,100 @@ Rustdoc treats broken intra-doc links as errors.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo doc --workspace --no-deps --all-features
-cargo test --workspace --all-features
-cargo build --workspace --all-targets --all-features
-cargo build -p showcase-dioxus --features dioxus/desktop
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo doc --locked --workspace --no-deps --all-features
+cargo test --locked --workspace --all-features
+cargo build --locked --workspace --all-targets --all-features
+cargo build --locked -p example-rust-dioxus --features dioxus/desktop
+```
+
+## Workflow Linting
+
+Actionlint validates GitHub Actions workflow syntax, expressions, job
+dependencies, and embedded shell scripts whenever a workflow changes.
+
+Requires [Actionlint](https://github.com/rhysd/actionlint) 1.7.12 locally.
+
+```bash
+actionlint
+```
+
+## Language Bindings
+
+The Bindings workflow packages C#, Java, Python, and browser bindings on Linux,
+then runs the C#, Java, Kotlin/JVM, and Python console examples. A macOS job packages Swift and runs its console example.
+Artifact uploads are reserved for release workflows.
+
+`boltffi.ci.toml` limits that pull-request job to its macOS ARM64 slice; release
+packaging continues to build the complete Apple matrix from `boltffi.toml`.
+
+Generated files live under the ignored `dist/` directory.
+
+Requires [BoltFFI](https://www.boltffi.dev/) 0.30.1, Clang, JDK 17, the .NET 10
+SDK, and Python 3.10 or newer. Swift packaging additionally requires macOS and
+Xcode. `pack` regenerates the binding before building the artifact consumed by
+each example.
+
+```bash
+cargo install --locked --version 0.30.1 boltffi_cli
+rustup target add wasm32-unknown-unknown
+boltffi pack csharp --deny-skipped
+boltffi pack java --deny-skipped
+boltffi pack python --deny-skipped --python python
+boltffi pack wasm --deny-skipped
+# macOS only
+boltffi pack apple --deny-skipped
+```
+
+After packaging the relevant binding, run the service and one or more console
+examples in separate terminals:
+
+```bash
+cargo run -p local-service -- run --print-ticket
+python examples/python/console/main.py <endpoint-ticket>
+dotnet run --project examples/csharp/console -- <endpoint-ticket>
+bash examples/gradlew -p examples :java:console:run --args="<endpoint-ticket>"
+bash examples/gradlew -p examples :kotlin:console:run --args="<endpoint-ticket>"
+# macOS only
+swift run --package-path examples/swift/console WFObserverConsole <endpoint-ticket>
+```
+
+Copy the value after `WF_OBSERVER_ENDPOINT_TICKET=` into the selected command.
+
+The Dioxus showcase scaffold is compiled in CI. Its game-dependent behaviour
+will remain local-only once implemented.
+
+Android generation remains disabled until the generated JNI boundary installs
+the JVM context required by [Iroh on Android](https://docs.rs/iroh/latest/iroh/endpoint/struct.Endpoint.html#usage-on-android).
+
+## Release bindings
+
+The Release bindings workflow runs for version tags and on manual request. It
+builds JVM bundles and Python wheels on every native host supported by BoltFFI,
+assembles one six-RID NuGet package, and packages the Apple and browser targets.
+Android remains excluded until its Iroh initialization is implemented.
+
+Python wheels cover every supported host for CPython 3.10 through 3.14. The
+workflow uploads artifacts to its Actions run; publishing them to package
+registries remains a separate release step.
+
+JVM artifacts are target-specific because BoltFFI 0.30.1 cannot combine
+cross-host JVM builds. The NuGet assembly job uses `boltffi.release.toml` to
+combine native libraries built by the platform matrix.
+
+The equivalent command for one local desktop target is:
+
+```bash
+boltffi pack java --release --deny-skipped
+boltffi pack python --release --deny-skipped --python python
+boltffi pack csharp --release --deny-skipped
+```
+
+Apple and browser packages can be built on their respective hosts with:
+
+```bash
+boltffi pack apple --release --deny-skipped
+boltffi pack wasm --release --deny-skipped
 ```
 
 ## Link checking
@@ -42,7 +132,7 @@ to be installed locally.
 ```bash
 cargo semver-checks
 ```
-
+ 
 ## Hotpath
 
 Hotpath is our profiling tool of choice. Profiling is not ran in CI as the workload

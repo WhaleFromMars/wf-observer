@@ -8,6 +8,12 @@ license.workspace = true
 memory-reader = { path = "../memory-reader" }
 protocol = { path = "../protocol" }
 
+tokio = { workspace = true, features = ["full"] }
+iroh = { workspace = true, features = ["portmapper"] }
+iroh-tickets = { workspace = true }
+irpc = { workspace = true }
+irpc-iroh = { workspace = true }
+
 clap = { workspace = true, features = ["derive"] }
 clap-verbosity-flag = { workspace = true }
 derive_aliases = { workspace = true }
@@ -16,15 +22,14 @@ serde = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+directories = { workspace = true }
+tempfile = { workspace = true }
 
-tokio = { workspace = true }
-iroh = { workspace = true }
-irpc = { workspace = true }
-irpc-iroh = { workspace = true }
 hotpath = { workspace = true, features = ["tokio"] }
 
 [dev-dependencies]
 wf-observer = { path = "../wf-observer" }
+wf_observer_ffi = { path = "../wf-observer-ffi" }
 
 [lints]
 workspace = true

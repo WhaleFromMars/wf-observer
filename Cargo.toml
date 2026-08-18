@@ -1,11 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-    "apps/showcase-dioxus",
+    "examples/rust/dioxus",
     "crates/local-service",
     "crates/memory-reader",
     "crates/protocol",
     "crates/wf-observer",
+    "crates/wf-observer-ffi",
 ]
 
 [workspace.package]
@@ -16,17 +17,20 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # Memflow + Memflow native deps live in crates/memory-reader
 
-tokio = { version = "1.53.1", features = ["full"] } # Trim down the feature set later
+tokio = { version = "1.53.1", default-features = false }
+tokio-util = { version = "0.7.18", default-features = false }
 iroh = {
     version = "1.0",
     default-features = false,
-    features = ["portmapper", "tls-ring"],
+    features = ["tls-ring"],
 }
+iroh-tickets = { version = "1.0" }
 irpc = { version = "0.17" }
 irpc-iroh = { version = "0.17" }
+getrandom = { version = "0.3.4", default-features = false }
 
 # FFI
-boltffi = { version = "0.30" }
+boltffi = { version = "=0.30.1", default-features = false }
 
 # Local application deps
 clap = { version = "4.6" }
@@ -50,6 +54,8 @@ directories = { version = "6" }
 semver = { version = "1.0" }
 url = { version = "2.5.8" }
 itertools = { version = "0.15" }
+tempfile = { version = "3.23" }
+pollster = { version = "0.4" }
 
 # Boilerplate Helpers
 display_doc = { version = "0.2" }

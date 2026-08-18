@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
@@ -49,7 +49,7 @@ jobs:
 
       - name: Install Wild linker
         if: runner.os == 'Linux'
-        uses: wild-linker/action@dc926c45399e1842cf81e604f52bdf0ad86a0c09
+        uses: wild-linker/action@dc926c45399e1842cf81e604f52bdf0ad86a0c09 # v0.10.0
         with:
           wild-version: "0.10.0"
 
@@ -63,16 +63,16 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Check documentation
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo doc --locked --workspace --no-deps --all-features
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --locked --workspace --all-features
 
       - name: Build workspace
-        run: cargo build --workspace --all-targets --all-features
+        run: cargo build --locked --workspace --all-targets --all-features
 
       - name: Build Dioxus desktop showcase
-        run: cargo build -p showcase-dioxus --features dioxus/desktop
+        run: cargo build --locked -p example-rust-dioxus --features dioxus/desktop

@@ -4,6 +4,7 @@ extern crate derive_aliases;
 mod application;
 mod cli;
 mod derive_alias;
+mod identity;
 mod prelude;
 mod transport;
 mod update;
@@ -26,7 +27,8 @@ async fn main() -> ExitCode {
         .init();
 
     let result = match args.command() {
-        cli::Command::Run => application::run().await,
+        cli::Command::Run { print_ticket } => application::run(print_ticket).await,
+        cli::Command::Endpoint => application::print_endpoint(),
         cli::Command::Update => Ok(()),
     };
 

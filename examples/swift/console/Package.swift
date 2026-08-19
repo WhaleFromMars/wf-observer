@@ -14,6 +14,10 @@ let package = Package(
             name: "WFObserverConsole",
             dependencies: [
                 .product(name: "WFObserver", package: "WFObserver"),
+            ],
+            // BoltFFI 0.30.1 does not propagate this static-library dependency.
+            linkerSettings: [
+                .linkedFramework("SystemConfiguration"),
             ]
         ),
     ]

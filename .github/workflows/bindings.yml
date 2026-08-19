@@ -50,10 +50,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install Clang
+      - name: Install native tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang
+          sudo apt-get install --yes binaryen clang
 
       - name: Install pinned Rust toolchain
         run: |
@@ -113,6 +113,8 @@ jobs:
     name: Package and test Swift binding
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
 
     steps:
       - name: Check out repository

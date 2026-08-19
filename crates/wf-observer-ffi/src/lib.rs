@@ -30,7 +30,7 @@ pub struct ObserverClient {
 #[boltffi::export]
 pub async fn connect(endpoint: String) -> Result<ObserverClient, String> {
     let address = parse_endpoint(&endpoint)?;
-    let client = runtime::execute(wf_observer::Client::connect(address))
+    let client = Box::pin(runtime::execute(wf_observer::Client::connect(address)))
         .await?
         .map_err(|error| format!("{error:#}"))?;
 

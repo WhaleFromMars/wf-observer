@@ -1,5 +1,9 @@
 # Warframe Observer
 
+The repository in its current state does not do any of the advertised features, this is merely the baseline to build upon.
+The memory reading aspect has been proven in a private repository, with a far richer api than overwolf, but will only be introduced when
+the rest of the stack/setup has been proven.
+
 A local service (currently foreground, the user must start it) that reads memory from a locally running Warframe process on
 Linux and Windows and makes the data available to other applications.
 

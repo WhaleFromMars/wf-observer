@@ -4,20 +4,13 @@ This example consumes the same generated Java/JNI binding as the Java example;
 there is no handwritten Kotlin wrapper. It performs one connection, ping, and
 graceful shutdown without a running game or data source.
 
-From the repository root, package the binding with JDK 17 and Clang installed:
+Run it from the repository root with JDK 17 and Clang installed:
 
 ```bash
-boltffi pack java --deny-skipped
+just example kotlin
 ```
 
-Start the service in a separate terminal, then pass its endpoint ticket to the
-example:
-
-```bash
-cargo run -p local-service -- run --print-ticket
-bash examples/gradlew -p examples :kotlin:console:run --args="<endpoint-ticket>"
-```
-
-On Windows, use `examples\gradlew.bat` instead. Copy the value after
-`WF_OBSERVER_ENDPOINT_TICKET=` into the Gradle command. The bindings workflow
-performs this exchange automatically.
+The runner packages the shared Java binding, starts a temporary service,
+supplies its endpoint ticket, selects the platform's Gradle wrapper, and shuts
+the service down afterwards. The bindings workflow performs the same exchange
+automatically.

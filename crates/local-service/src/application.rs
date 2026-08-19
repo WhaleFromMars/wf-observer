@@ -7,8 +7,8 @@ use iroh_tickets::endpoint::EndpointTicket;
 
 use crate::prelude::*;
 
-/// Runs until an operating-system shutdown signal arrives.
-pub(crate) async fn run(print_ticket: bool) -> anyhow::Result<()> {
+/// Runs until an operating-system or supervising-process shutdown arrives.
+pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
     let secret_key = crate::identity::load_or_create()?;
     let server = crate::transport::start(secret_key).await?;
 
@@ -35,7 +35,7 @@ pub(crate) async fn run(print_ticket: bool) -> anyhow::Result<()> {
 
     info!(endpoint_id = %server.endpoint().id(), "local application started");
 
-    let shutdown_result = wait_for_shutdown().await;
+    let shutdown_result = wait_for_shutdown(shutdown_on_stdin_close).await;
     if shutdown_result.is_ok() {
         info!("shutdown requested");
     }
@@ -56,15 +56,44 @@ pub(crate) fn print_endpoint() -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn wait_for_shutdown(shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
+    if !shutdown_on_stdin_close {
+        return wait_for_operating_system_shutdown().await;
+    }
+
+    tokio::select! {
+        result = wait_for_operating_system_shutdown() => result,
+        result = wait_for_stdin_close() => result,
+    }
+}
+
+async fn wait_for_stdin_close() -> anyhow::Result<()> {
+    use tokio::io::AsyncReadExt as _;
+
+    let mut stdin = tokio::io::stdin();
+    let mut buffer = [0_u8; 1024];
+
+    loop {
+        if stdin
+            .read(&mut buffer)
+            .await
+            .context("failed to listen for the supervising process")?
+            == 0
+        {
+            return Ok(());
+        }
+    }
+}
+
 #[cfg(not(unix))]
-async fn wait_for_shutdown() -> anyhow::Result<()> {
+async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
     tokio::signal::ctrl_c()
         .await
         .context("failed to listen for Ctrl+C")
 }
 
 #[cfg(unix)]
-async fn wait_for_shutdown() -> anyhow::Result<()> {
+async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
 
     let mut terminate = signal(SignalKind::terminate()).context("failed to listen for SIGTERM")?;

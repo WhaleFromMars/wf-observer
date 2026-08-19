@@ -26,6 +26,9 @@ pub(crate) enum Command {
         /// Prints a connection ticket after the transport has bound.
         #[arg(long)]
         print_ticket: bool,
+        /// Stops after the process supervising standard input closes it.
+        #[arg(long)]
+        shutdown_on_stdin_close: bool,
     },
     /// Prints the service's stable Iroh endpoint identifier.
     Endpoint,

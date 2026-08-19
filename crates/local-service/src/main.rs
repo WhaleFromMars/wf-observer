@@ -27,7 +27,10 @@ async fn main() -> ExitCode {
         .init();
 
     let result = match args.command() {
-        cli::Command::Run { print_ticket } => application::run(print_ticket).await,
+        cli::Command::Run {
+            print_ticket,
+            shutdown_on_stdin_close,
+        } => application::run(print_ticket, shutdown_on_stdin_close).await,
         cli::Command::Endpoint => application::print_endpoint(),
         cli::Command::Update => Ok(()),
     };

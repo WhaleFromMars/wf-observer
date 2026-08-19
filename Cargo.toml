@@ -7,6 +7,7 @@ members = [
     "crates/protocol",
     "crates/wf-observer",
     "crates/wf-observer-ffi",
+    "xtask",
 ]
 
 [workspace.package]

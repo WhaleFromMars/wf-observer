@@ -15,6 +15,7 @@ on:
       - "crates/local-service/**"
       - "crates/wf-observer/**"
       - "crates/wf-observer-ffi/**"
+      - "xtask/**"
       - "examples/csharp/**"
       - "examples/gradle/**"
       - "examples/gradlew"
@@ -103,51 +104,10 @@ jobs:
           --python "${{ steps.python.outputs.python-path }}"
 
       - name: Run packaged console examples
-        shell: bash
-        run: |
-          cargo build --locked --quiet -p local-service
-          service="target/debug/local-service"
-          log="${RUNNER_TEMP}/wf-observer-local-service.log"
-
-          "$service" run --print-ticket >"$log" 2>&1 &
-          service_pid=$!
-
-          cleanup() {
-            if kill -0 "$service_pid" 2>/dev/null; then
-              kill -INT "$service_pid"
-              wait "$service_pid" || true
-            fi
-            cat "$log"
-          }
-          trap cleanup EXIT
-
-          ready=false
-          for _ in {1..60}; do
-            if grep --quiet "^WF_OBSERVER_ENDPOINT_TICKET=" "$log"; then
-              ready=true
-              break
-            fi
-            if ! kill -0 "$service_pid" 2>/dev/null; then
-              echo "local service exited before becoming ready" >&2
-              exit 1
-            fi
-            sleep 0.5
-          done
-
-          if [[ "$ready" != true ]]; then
-            echo "local service did not become ready" >&2
-            exit 1
-          fi
-
-          ticket="$(sed --quiet 's/^WF_OBSERVER_ENDPOINT_TICKET=//p' "$log" | head --lines 1)"
-
-          "${{ steps.python.outputs.python-path }}" -m venv "${RUNNER_TEMP}/wf-observer-python"
-          python="${RUNNER_TEMP}/wf-observer-python/bin/python"
-          "$python" -m pip install dist/python/wheelhouse/*.whl
-          "$python" examples/python/console/main.py "$ticket"
-          dotnet run --project examples/csharp/console -- "$ticket"
-          bash examples/gradlew -p examples --no-daemon :java:console:run --args="$ticket"
-          bash examples/gradlew -p examples --no-daemon :kotlin:console:run --args="$ticket"
+        run: >-
+          cargo run --locked -p xtask -- example --no-package
+          --python "${{ steps.python.outputs.python-path }}"
+          python csharp java kotlin
 
   swift:
     name: Package and test Swift binding
@@ -176,41 +136,4 @@ jobs:
         run: boltffi --overlay boltffi.ci.toml pack apple --deny-skipped
 
       - name: Run packaged Swift example
-        shell: bash
-        run: |
-          cargo build --locked --quiet -p local-service
-          service="target/debug/local-service"
-          log="${RUNNER_TEMP}/wf-observer-local-service.log"
-
-          "$service" run --print-ticket >"$log" 2>&1 &
-          service_pid=$!
-
-          cleanup() {
-            if kill -0 "$service_pid" 2>/dev/null; then
-              kill -INT "$service_pid"
-              wait "$service_pid" || true
-            fi
-            cat "$log"
-          }
-          trap cleanup EXIT
-
-          ready=false
-          for _ in {1..60}; do
-            if grep --quiet "^WF_OBSERVER_ENDPOINT_TICKET=" "$log"; then
-              ready=true
-              break
-            fi
-            if ! kill -0 "$service_pid" 2>/dev/null; then
-              echo "local service exited before becoming ready" >&2
-              exit 1
-            fi
-            sleep 0.5
-          done
-
-          if [[ "$ready" != true ]]; then
-            echo "local service did not become ready" >&2
-            exit 1
-          fi
-
-          ticket="$(sed --quiet 's/^WF_OBSERVER_ENDPOINT_TICKET=//p' "$log" | head --lines 1)"
-          swift run --package-path examples/swift/console WFObserverConsole "$ticket"
+        run: cargo run --locked -p xtask -- example --no-package swift

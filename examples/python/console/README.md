@@ -1,25 +1,15 @@
 # Python console example
 
-This example installs the generated Python wheel and verifies a connection to
-the real WF Observer service. It only sends `Ping`, so no game or data source is
-required.
+This example installs the generated Python wheel into a temporary environment
+and verifies a connection to the real WF Observer service. It only sends
+`Ping`, so no game or data source is required.
 
-Package the binding from the repository root with Python 3.10 or newer:
-
-```bash
-boltffi pack python --deny-skipped --python python
-python -m venv .venv
-# Activate .venv using the command for your shell.
-python -m pip install dist/python/wheelhouse/<wheel-file>.whl
-```
-
-Start the service in a separate terminal and pass its live endpoint ticket to
-the example:
+Run it from the repository root with Python 3.10 or newer:
 
 ```bash
-cargo run -p local-service -- run --print-ticket
-python examples/python/console/main.py <endpoint-ticket>
+just example python
 ```
 
-Copy the value after `WF_OBSERVER_ENDPOINT_TICKET=` into the Python command.
-The bindings workflow performs this complete exchange automatically.
+The runner packages the binding, starts a temporary service, supplies its
+endpoint ticket, and shuts it down afterwards. The bindings workflow performs
+the same exchange automatically.

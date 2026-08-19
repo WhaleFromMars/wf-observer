@@ -4,7 +4,6 @@ crate = "wf_observer_ffi"
 version = "0.1.0"
 description = "Generated language bindings for the WF Observer client"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/WhaleFromMars/wf-observer"
 
 [cargo]
 global_args = ["--package", "wf_observer_ffi"]

@@ -41,36 +41,31 @@ packaging continues to build the complete Apple matrix from `boltffi.toml`.
 
 Generated files live under the ignored `dist/` directory.
 
-Requires [BoltFFI](https://www.boltffi.dev/) 0.30.1, Clang, JDK 17, the .NET 10
-SDK, and Python 3.10 or newer. Swift packaging additionally requires macOS and
-Xcode. `pack` regenerates the binding before building the artifact consumed by
-each example.
+Requires [Just](https://just.systems/), [BoltFFI](https://www.boltffi.dev/)
+0.30.1, Clang, JDK 17, the .NET 10 SDK, and Python 3.10 or newer. Swift
+packaging additionally requires macOS and Xcode. `pack` regenerates the binding
+before building the artifact consumed by each example.
 
 ```bash
 cargo install --locked --version 0.30.1 boltffi_cli
 rustup target add wasm32-unknown-unknown
-boltffi pack csharp --deny-skipped
-boltffi pack java --deny-skipped
-boltffi pack python --deny-skipped --python python
-boltffi pack wasm --deny-skipped
+just binding csharp
+just binding java
+just binding python --python python
+just binding wasm
 # macOS only
-boltffi pack apple --deny-skipped
+just binding apple
 ```
 
-After packaging the relevant binding, run the service and one or more console
-examples in separate terminals:
+The example runner packages each required binding once, starts a temporary
+service, passes its endpoint ticket to every selected example, and shuts the
+service down afterwards:
 
 ```bash
-cargo run -p local-service -- run --print-ticket
-python examples/python/console/main.py <endpoint-ticket>
-dotnet run --project examples/csharp/console -- <endpoint-ticket>
-bash examples/gradlew -p examples :java:console:run --args="<endpoint-ticket>"
-bash examples/gradlew -p examples :kotlin:console:run --args="<endpoint-ticket>"
+just example python csharp java kotlin
 # macOS only
-swift run --package-path examples/swift/console WFObserverConsole <endpoint-ticket>
+just example swift
 ```
-
-Copy the value after `WF_OBSERVER_ENDPOINT_TICKET=` into the selected command.
 
 The Dioxus showcase scaffold is compiled in CI. Its game-dependent behaviour
 will remain local-only once implemented.
@@ -96,16 +91,16 @@ combine native libraries built by the platform matrix.
 The equivalent command for one local desktop target is:
 
 ```bash
-boltffi pack java --release --deny-skipped
-boltffi pack python --release --deny-skipped --python python
-boltffi pack csharp --release --deny-skipped
+just binding java --release
+just binding python --release --python python
+just binding csharp --release
 ```
 
 Apple and browser packages can be built on their respective hosts with:
 
 ```bash
-boltffi pack apple --release --deny-skipped
-boltffi pack wasm --release --deny-skipped
+just binding apple --release
+just binding wasm --release
 ```
 
 ## Link checking

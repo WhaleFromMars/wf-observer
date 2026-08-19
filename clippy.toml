@@ -29,7 +29,6 @@ disallowed-types = [
     { path = "std::sync::RwLock", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::RwLock" },
     { path = "std::sync::Condvar", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::Condvar" },
     { path = "std::sync::Once", reason = "use parking_lot's synchronization primitives", replacement = "parking_lot::Once" },
-
 ]
 
 disallowed-methods = [

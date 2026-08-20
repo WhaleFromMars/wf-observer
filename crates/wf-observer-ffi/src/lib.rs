@@ -9,12 +9,14 @@
 
 mod runtime;
 
+use std::sync::Arc;
+
 use iroh_tickets::endpoint::EndpointTicket;
 use wf_observer::EndpointId;
 
 /// Client exposed to generated language bindings.
 pub struct ObserverClient {
-    inner: wf_observer::Client,
+    inner: Arc<wf_observer::Client>,
 }
 
 /// Connects using an Iroh endpoint ticket or stable endpoint identifier.
@@ -34,7 +36,9 @@ pub async fn connect(endpoint: String) -> Result<ObserverClient, String> {
         .await?
         .map_err(|error| format!("{error:#}"))?;
 
-    Ok(ObserverClient { inner: client })
+    Ok(ObserverClient {
+        inner: Arc::new(client),
+    })
 }
 
 #[boltffi::export]
@@ -45,7 +49,8 @@ impl ObserverClient {
     ///
     /// Returns an error if the async runtime cannot start or the ping fails.
     pub async fn ping(&self) -> Result<(), String> {
-        runtime::execute(self.inner.ping())
+        let client = Arc::clone(&self.inner);
+        runtime::execute(async move { client.ping().await })
             .await?
             .map_err(|error| format!("{error:#}"))
     }
@@ -60,7 +65,8 @@ impl ObserverClient {
     ///
     /// Returns an error if the async runtime cannot start.
     pub async fn shutdown(&self) -> Result<(), String> {
-        runtime::execute(self.inner.close()).await?;
+        let client = Arc::clone(&self.inner);
+        runtime::execute(async move { client.close().await }).await?;
         Ok(())
     }
 }

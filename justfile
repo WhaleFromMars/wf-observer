@@ -5,12 +5,13 @@ set shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 default:
     @just --list
 
-# Run the regular Rust checks used by CI.
+# Run the regular Rust checks locally.
 check:
     cargo fmt --all -- --check
-    cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-    cargo doc --locked --workspace --no-deps --all-features
-    cargo test --locked --workspace --all-features
+    cargo clippy --locked --workspace --exclude example-rust-dioxus --all-targets --all-features -- -D warnings
+    cargo doc --locked --workspace --exclude example-rust-dioxus --no-deps --all-features
+    cargo test --locked --workspace --exclude example-rust-dioxus --all-features
+    cargo clippy --locked -p example-rust-dioxus --all-targets --features dioxus/desktop -- -D warnings
     cargo build --locked -p example-rust-dioxus --features dioxus/desktop
 
 # Format Rust sources.

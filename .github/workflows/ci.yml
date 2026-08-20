@@ -2,50 +2,256 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
 jobs:
-  checks:
-    name: Check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+  plan:
+    name: CI / plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      rust: ${{ steps.plan.outputs.rust }}
+      dioxus: ${{ steps.plan.outputs.dioxus }}
+      jvm: ${{ steps.plan.outputs.jvm }}
+      csharp: ${{ steps.plan.outputs.csharp }}
+      python: ${{ steps.plan.outputs.python }}
+      wasm: ${{ steps.plan.outputs.wasm }}
+      swift: ${{ steps.plan.outputs.swift }}
+      links: ${{ steps.plan.outputs.links }}
+      link_files: ${{ steps.filter.outputs.links_files }}
+      release: ${{ steps.plan.outputs.release }}
+      workflows: ${{ steps.plan.outputs.workflows }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          list-files: shell
+          filters: .github/ci-paths.yml
+
+      - name: Build CI plan
+        id: plan
+        shell: bash
+        env:
+          RUST_CHANGED: ${{ steps.filter.outputs.rust }}
+          DIOXUS_CHANGED: ${{ steps.filter.outputs.dioxus }}
+          BINDINGS_COMMON_CHANGED: ${{ steps.filter.outputs.bindings_common }}
+          JVM_CHANGED: ${{ steps.filter.outputs.jvm }}
+          CSHARP_CHANGED: ${{ steps.filter.outputs.csharp }}
+          PYTHON_CHANGED: ${{ steps.filter.outputs.python }}
+          WASM_CHANGED: ${{ steps.filter.outputs.wasm }}
+          SWIFT_CHANGED: ${{ steps.filter.outputs.swift }}
+          LINKS_CHANGED: ${{ steps.filter.outputs.links }}
+          RELEASE_CHANGED: ${{ steps.filter.outputs.release }}
+          WORKFLOWS_CHANGED: ${{ steps.filter.outputs.workflows }}
+          CI_WORKFLOW_CHANGED: ${{ steps.filter.outputs.ci_workflow }}
+          CHANGED_FILES: ${{ steps.filter.outputs.all_files }}
+          ALL_COUNT: ${{ steps.filter.outputs.all_count }}
+          NON_RUNTIME_COUNT: ${{ steps.filter.outputs.non_runtime_count }}
+        run: |
+          is_true() {
+            [[ "$1" == "true" ]]
+          }
+
+          any_true() {
+            local value
+            for value in "$@"; do
+              if is_true "$value"; then
+                echo true
+                return
+              fi
+            done
+            echo false
+          }
+
+          rust="$(any_true "$CI_WORKFLOW_CHANGED" "$RUST_CHANGED")"
+          dioxus="$(any_true "$CI_WORKFLOW_CHANGED" "$DIOXUS_CHANGED")"
+          bindings_common="$(any_true "$CI_WORKFLOW_CHANGED" "$BINDINGS_COMMON_CHANGED")"
+          jvm="$(any_true "$bindings_common" "$JVM_CHANGED")"
+          csharp="$(any_true "$bindings_common" "$CSHARP_CHANGED")"
+          python="$(any_true "$bindings_common" "$PYTHON_CHANGED")"
+          wasm="$(any_true "$bindings_common" "$WASM_CHANGED")"
+          swift="$(any_true "$bindings_common" "$SWIFT_CHANGED")"
+          links="$LINKS_CHANGED"
+          release="$(any_true "$CI_WORKFLOW_CHANGED" "$RELEASE_CHANGED")"
+          workflows="$WORKFLOWS_CHANGED"
+
+          # A new runtime/build path should fail safe until it is explicitly mapped.
+          if ! is_true "$(any_true "$rust" "$dioxus" "$jvm" "$csharp" "$python" "$wasm" "$swift" "$release" "$workflows")" \
+            && (( ${ALL_COUNT:-0} > ${NON_RUNTIME_COUNT:-0} )); then
+            rust=true
+            echo "::warning::Unknown runtime path detected; selecting core Rust CI"
+          fi
+
+          {
+            echo "rust=$rust"
+            echo "dioxus=$dioxus"
+            echo "jvm=$jvm"
+            echo "csharp=$csharp"
+            echo "python=$python"
+            echo "wasm=$wasm"
+            echo "swift=$swift"
+            echo "links=$links"
+            echo "release=$release"
+            echo "workflows=$workflows"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### CI plan"
+            echo
+            echo "| Suite | Selected |"
+            echo "| --- | --- |"
+            echo "| Rust | $rust |"
+            echo "| Dioxus | $dioxus |"
+            echo "| JVM bindings | $jvm |"
+            echo "| C# bindings | $csharp |"
+            echo "| Python bindings | $python |"
+            echo "| WASM bindings | $wasm |"
+            echo "| Swift bindings | $swift |"
+            echo "| Links | $links |"
+            echo "| Release metadata | $release |"
+            echo "| Workflow lint | $workflows |"
+            echo
+            echo "Changed files (shell escaped):"
+            echo '```text'
+            echo "$CHANGED_FILES"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Actionlint
+        if: steps.plan.outputs.workflows == 'true'
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" \
+            | sha256sum --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" actionlint
+
+      - name: Check workflows
+        if: steps.plan.outputs.workflows == 'true'
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+      - name: Check formatting
+        if: steps.plan.outputs.rust == 'true' || steps.plan.outputs.dioxus == 'true'
+        run: cargo fmt --all -- --check
+
+  rust-linux:
+    name: CI / Rust (Linux)
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ci-${{ runner.os }}
+          save-if: false
+
+      - name: Run Clippy
+        run: >-
+          cargo clippy --locked --profile ci --workspace
+          --exclude example-rust-dioxus --all-targets --all-features
+          -- -D warnings
+
+      - name: Check documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: >-
+          cargo doc --locked --profile ci --workspace
+          --exclude example-rust-dioxus --no-deps --all-features
+
+      - name: Run tests
+        run: >-
+          cargo test --locked --profile ci --workspace
+          --exclude example-rust-dioxus --all-features
+
+  rust-windows:
+    name: CI / Rust (Windows)
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ci-${{ runner.os }}
+          save-if: false
+
+      - name: Run platform tests
+        run: >-
+          cargo test --locked --profile ci --workspace
+          --exclude example-rust-dioxus --all-features
+
+  dioxus:
+    name: CI / Dioxus (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.dioxus == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            command: build
+          - os: windows-latest
+            command: check
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes \
-            build-essential \
-            clang \
-            curl \
-            file \
+          sudo apt-get install --yes --no-install-recommends \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            libssl-dev \
             libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            lld \
-            wget
+            libxdo-dev
 
       - name: Install Wild linker
         if: runner.os == 'Linux'
@@ -56,23 +262,302 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Cache Rust dependencies
+      - name: Restore Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ci-${{ runner.os }}
+          save-if: false
 
-      - name: Run Clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Run Dioxus Clippy
+        if: runner.os == 'Linux'
+        run: >-
+          cargo clippy --locked --profile ci -p example-rust-dioxus
+          --all-targets --features dioxus/desktop -- -D warnings
 
-      - name: Check documentation
-        run: cargo doc --locked --workspace --no-deps --all-features
+      - name: Validate Dioxus desktop showcase
+        run: >-
+          cargo ${{ matrix.command }} --locked --profile ci
+          -p example-rust-dioxus --features dioxus/desktop
 
-      - name: Run tests
-        run: cargo test --locked --workspace --all-features
+  bindings-native:
+    name: CI / Bindings (native)
+    needs: plan
+    if: >-
+      needs.plan.outputs.jvm == 'true' ||
+      needs.plan.outputs.csharp == 'true' ||
+      needs.plan.outputs.python == 'true' ||
+      needs.plan.outputs.wasm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
 
-      - name: Build workspace
-        run: cargo build --locked --workspace --all-targets --all-features
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - name: Build Dioxus desktop showcase
-        run: cargo build --locked -p example-rust-dioxus --features dioxus/desktop
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Add WASM target
+        if: needs.plan.outputs.wasm == 'true'
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install Java
+        if: needs.plan.outputs.jvm == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: needs.plan.outputs.jvm == 'true'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+
+      - name: Resolve Gradle plugins
+        if: needs.plan.outputs.jvm == 'true'
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            if bash examples/gradlew -p examples --no-daemon --console=plain help; then
+              exit 0
+            fi
+
+            if (( attempt == 3 )); then
+              echo "::error::Gradle plugin resolution failed after $attempt attempts"
+              exit 1
+            fi
+
+            delay=$((attempt * 15))
+            echo "::warning::Gradle plugin resolution failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ci-${{ runner.os }}
+          save-if: false
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      # WASM is the quickest binding and has caught toolchain drift before, so
+      # validate it before the more expensive native packages when selected.
+      - name: Package browser binding
+        if: needs.plan.outputs.wasm == 'true'
+        env:
+          CARGO_TARGET_DIR: target
+        run: >-
+          boltffi --overlay boltffi.ci.toml pack wasm --deny-skipped
+          --cargo-arg=--profile=ci
+
+      - name: Install .NET SDK
+        if: needs.plan.outputs.csharp == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Python
+        if: needs.plan.outputs.python == 'true'
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.10"
+
+      - name: Package JVM binding
+        if: needs.plan.outputs.jvm == 'true'
+        run: boltffi pack java --deny-skipped --cargo-arg=--profile=ci
+
+      - name: Package C# binding
+        if: needs.plan.outputs.csharp == 'true'
+        run: boltffi pack csharp --deny-skipped --cargo-arg=--profile=ci
+
+      - name: Package Python binding
+        if: needs.plan.outputs.python == 'true'
+        run: >-
+          boltffi pack python --deny-skipped
+          --cargo-arg=--profile=ci
+          --python "${{ steps.python.outputs.python-path }}"
+
+      - name: Run selected console examples
+        if: >-
+          needs.plan.outputs.jvm == 'true' ||
+          needs.plan.outputs.csharp == 'true' ||
+          needs.plan.outputs.python == 'true'
+        shell: bash
+        env:
+          RUN_JVM: ${{ needs.plan.outputs.jvm }}
+          RUN_CSHARP: ${{ needs.plan.outputs.csharp }}
+          RUN_PYTHON: ${{ needs.plan.outputs.python }}
+          PYTHON_PATH: ${{ steps.python.outputs.python-path }}
+        run: |
+          targets=()
+          if [[ "$RUN_PYTHON" == "true" ]]; then targets+=(python); fi
+          if [[ "$RUN_CSHARP" == "true" ]]; then targets+=(csharp); fi
+          if [[ "$RUN_JVM" == "true" ]]; then targets+=(java kotlin); fi
+
+          command=(cargo run --locked --profile ci -p xtask --
+            example --no-package --profile ci)
+          if [[ "$RUN_PYTHON" == "true" ]]; then
+            command+=(--python "$PYTHON_PATH")
+          fi
+          "${command[@]}" "${targets[@]}"
+
+  bindings-swift:
+    name: CI / Bindings (Swift)
+    needs: plan
+    if: needs.plan.outputs.swift == 'true'
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add aarch64-apple-darwin
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: ci-${{ runner.os }}
+          save-if: false
+
+      - name: Install BoltFFI CLI
+        run: cargo install --locked --version 0.30.1 boltffi_cli
+
+      - name: Package Swift binding
+        run: >-
+          boltffi --overlay boltffi.ci.toml pack apple --deny-skipped
+          --cargo-arg=--profile=ci
+
+      - name: Run packaged Swift example
+        run: >-
+          cargo run --locked --profile ci -p xtask --
+          example --no-package --profile ci swift
+
+  links:
+    name: CI / Links
+    needs: plan
+    if: needs.plan.outputs.links == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Check links in changed files
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: "--no-progress ${{ needs.plan.outputs.link_files }}"
+          failIfEmpty: false
+          lycheeVersion: v0.24.2
+
+  release-metadata:
+    name: CI / Release metadata
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Parse release configuration
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tomllib
+
+          for filename in ("boltffi.toml", "boltffi.ci.toml", "boltffi.release.toml"):
+              with pathlib.Path(filename).open("rb") as source:
+                  tomllib.load(source)
+          PY
+
+      - name: Validate package versions
+        shell: bash
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer") | .version')"
+          boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
+          [[ -n "$version" && "$version" == "$boltffi_version" ]]
+
+  required:
+    name: CI / required
+    needs:
+      - plan
+      - rust-linux
+      - rust-windows
+      - dioxus
+      - bindings-native
+      - bindings-swift
+      - links
+      - release-metadata
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate selected checks
+        shell: bash
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          RUN_RUST: ${{ needs.plan.outputs.rust }}
+          RUST_LINUX_RESULT: ${{ needs.rust-linux.result }}
+          RUST_WINDOWS_RESULT: ${{ needs.rust-windows.result }}
+          RUN_DIOXUS: ${{ needs.plan.outputs.dioxus }}
+          DIOXUS_RESULT: ${{ needs.dioxus.result }}
+          RUN_NATIVE: ${{ needs.plan.outputs.jvm == 'true' || needs.plan.outputs.csharp == 'true' || needs.plan.outputs.python == 'true' || needs.plan.outputs.wasm == 'true' }}
+          NATIVE_RESULT: ${{ needs.bindings-native.result }}
+          RUN_SWIFT: ${{ needs.plan.outputs.swift }}
+          SWIFT_RESULT: ${{ needs.bindings-swift.result }}
+          RUN_LINKS: ${{ needs.plan.outputs.links }}
+          LINKS_RESULT: ${{ needs.links.result }}
+          RUN_RELEASE: ${{ needs.plan.outputs.release }}
+          RELEASE_RESULT: ${{ needs.release-metadata.result }}
+        run: |
+          failures=()
+
+          require_result() {
+            local selected="$1"
+            local result="$2"
+            local label="$3"
+            local expected=skipped
+            if [[ "$selected" == "true" ]]; then expected=success; fi
+
+            if [[ "$result" != "$expected" ]]; then
+              failures+=("$label: expected $expected, got $result")
+            fi
+          }
+
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            failures+=("CI plan: expected success, got $PLAN_RESULT")
+          fi
+
+          require_result "$RUN_RUST" "$RUST_LINUX_RESULT" "Rust (Linux)"
+          require_result "$RUN_RUST" "$RUST_WINDOWS_RESULT" "Rust (Windows)"
+          require_result "$RUN_DIOXUS" "$DIOXUS_RESULT" "Dioxus"
+          require_result "$RUN_NATIVE" "$NATIVE_RESULT" "Native bindings"
+          require_result "$RUN_SWIFT" "$SWIFT_RESULT" "Swift bindings"
+          require_result "$RUN_LINKS" "$LINKS_RESULT" "Links"
+          require_result "$RUN_RELEASE" "$RELEASE_RESULT" "Release metadata"
+
+          if (( ${#failures[@]} > 0 )); then
+            printf '%s\n' "${failures[@]}" >&2
+            exit 1
+          fi
+
+          echo "Every selected CI suite passed."

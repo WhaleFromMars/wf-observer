@@ -1,28 +1,40 @@
 # Continuous integration
 
-This document describes the CI workflow. Where applicable, each section ends with the equivalent command for running the check locally.
-I am new to CI, this probably does not follow best practices, feel free to suggest improvements.
+This document describes the CI workflows. Where applicable, each section ends
+with the equivalent command for running the check locally.
+
+Pull requests always create one stable `CI / required` check. A lightweight
+planning job classifies the changed files, runs formatting and workflow linting
+when relevant, and starts only the affected component jobs. The final check
+fails unless every selected component succeeds and every unselected component
+is skipped. Dependency groups are documented as data in
+`.github/ci-paths.yml`; changing that policy intentionally exercises every CI
+component.
 
 ## Core Rust Checks
 
-The CI workflow runs formatting, Clippy, documentation, tests, and builds on
-Windows and Linux for pull requests and pushes to `main`.
+Linux runs formatting, Clippy, documentation, and tests for the core workspace.
+Windows runs the platform-specific core tests without repeating the
+platform-independent lint and documentation work.
 
 Rustdoc treats broken intra-doc links as errors.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo doc --locked --workspace --no-deps --all-features
-cargo test --locked --workspace --all-features
-cargo build --locked --workspace --all-targets --all-features
+cargo clippy --locked --workspace --exclude example-rust-dioxus --all-targets --all-features -- -D warnings
+cargo doc --locked --workspace --exclude example-rust-dioxus --no-deps --all-features
+cargo test --locked --workspace --exclude example-rust-dioxus --all-features
+cargo clippy --locked -p example-rust-dioxus --all-targets --features dioxus/desktop -- -D warnings
 cargo build --locked -p example-rust-dioxus --features dioxus/desktop
 ```
 
+`just check` runs this complete local sequence.
+
 ## Workflow Linting
 
-Actionlint validates GitHub Actions workflow syntax, expressions, job
-dependencies, and embedded shell scripts whenever a workflow changes.
+Actionlint runs inside the planning job whenever a workflow changes. A change
+to the required CI workflow selects every component so modifications to CI
+steps are exercised, not merely parsed.
 
 Requires [Actionlint](https://github.com/rhysd/actionlint) 1.7.12 locally.
 
@@ -32,9 +44,13 @@ actionlint
 
 ## Language Bindings
 
-The Bindings workflow packages C#, Java, Python, and browser bindings on Linux,
-then runs the C#, Java, Kotlin/JVM, and Python console examples. A macOS job packages Swift and runs its console example.
-Artifact uploads are reserved for release workflows.
+The required CI workflow packages selected native bindings on Linux. Java,
+Gradle, .NET, Python, Binaryen, and their package/example steps are enabled
+independently from the changed paths. A Gradle-only change therefore runs only
+the JVM portion. Shared FFI, client, service, memory-reader, or binding
+configuration changes conservatively select every affected language. Swift
+runs on macOS only for shared or Swift-specific changes. Artifact uploads are
+reserved for release workflows.
 
 `boltffi.ci.toml` limits that pull-request job to its macOS ARM64 slice; release
 packaging continues to build the complete Apple matrix from `boltffi.toml`.
@@ -42,7 +58,8 @@ packaging continues to build the complete Apple matrix from `boltffi.toml`.
 Generated files live under the ignored `dist/` directory.
 
 Requires [Just](https://just.systems/), [BoltFFI](https://www.boltffi.dev/)
-0.30.1, Clang, JDK 17, the .NET 10 SDK, and Python 3.10 or newer. Swift
+0.30.1, Clang, JDK 17, the .NET 10 SDK, and Python 3.10 or newer. Browser
+packaging requires Binaryen 123 or newer. Swift
 packaging additionally requires macOS and Xcode. `pack` regenerates the binding
 before building the artifact consumed by each example.
 
@@ -67,8 +84,9 @@ just example python csharp java kotlin
 just example swift
 ```
 
-The Dioxus showcase scaffold is compiled in CI. Its game-dependent behaviour
-will remain local-only once implemented.
+The Dioxus showcase is linted and linked on Linux and checked on Windows only
+when the showcase or one of its workspace dependencies changes. Its
+game-dependent behaviour will remain local-only.
 
 Android generation remains disabled until the generated JNI boundary installs
 the JVM context required by [Iroh on Android](https://docs.rs/iroh/latest/iroh/endpoint/struct.Endpoint.html#usage-on-android).
@@ -82,7 +100,8 @@ Android remains excluded until its Iroh initialization is implemented.
 
 Python wheels cover every supported host for CPython 3.10 through 3.14. The
 workflow uploads artifacts to its Actions run; publishing them to package
-registries remains a separate release step.
+registries remains a separate release step. Final binding bundles are retained
+for seven days; intermediate C# native libraries are retained for one day.
 
 JVM artifacts are target-specific because BoltFFI 0.30.1 cannot combine
 cross-host JVM builds. The NuGet assembly job uses `boltffi.release.toml` to
@@ -105,8 +124,10 @@ just binding wasm --release
 
 ## Link checking
 
-The Links workflow uses Lychee to check links in every Markdown and Rust
-source file. Rust files are scanned as plain text, which catches full URLs in doc comments and string literals.
+Rust files are scanned as plain text, which catches full URLs in doc
+comments and string literals. A scheduled weekly workflow scans the entire
+repository so external link rot is still detected without blocking unrelated
+pull requests.
 
 Requires [Lychee](https://github.com/lycheeverse/lychee) to be installed
 locally.
@@ -114,6 +135,14 @@ locally.
 ```bash
 lychee './**/*.md' './**/*.rs' './**/*.toml' './**/*.yml' './**/*.yaml' './**/*.css'
 ```
+
+## Caches
+
+Pull-request jobs restore caches but do not save multi-gigabyte target caches
+under pull-request-only refs. After dependency manifests, the lockfile, or the
+toolchain change on `main`, the `Warm CI caches` workflow refreshes the shared
+Linux and Windows dependency caches and the smaller Linux/macOS BoltFFI tool
+caches.
 
 ## SemVer checking
 

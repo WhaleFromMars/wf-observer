@@ -303,20 +303,6 @@ jobs:
         if: needs.plan.outputs.wasm == 'true'
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Install Binaryen 123
-        if: needs.plan.outputs.wasm == 'true'
-        shell: bash
-        run: |
-          archive="$RUNNER_TEMP/binaryen-version_123-x86_64-linux.tar.gz"
-          curl --fail --location --silent --show-error \
-            --output "$archive" \
-            https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz
-          echo "e959f2170af4c20c552e9de3a0253704d6a9d2766e8fdb88e4d6ac4bae9388fe  $archive" \
-            | sha256sum --check
-          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/binaryen-version_123/bin/wasm-opt" --version
-
       - name: Install Java
         if: needs.plan.outputs.jvm == 'true'
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -348,11 +334,10 @@ jobs:
             sleep "$delay"
           done
 
-      - name: Restore binding tools
+      - name: Restore Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          cache-targets: false
-          shared-key: bindings-tools-${{ runner.os }}
+          shared-key: ci-${{ runner.os }}
           save-if: false
 
       - name: Install BoltFFI CLI
@@ -362,7 +347,11 @@ jobs:
       # validate it before the more expensive native packages when selected.
       - name: Package browser binding
         if: needs.plan.outputs.wasm == 'true'
-        run: boltffi pack wasm --deny-skipped
+        env:
+          CARGO_TARGET_DIR: target
+        run: >-
+          boltffi --overlay boltffi.ci.toml pack wasm --deny-skipped
+          --cargo-arg=--profile=ci
 
       - name: Install .NET SDK
         if: needs.plan.outputs.csharp == 'true'
@@ -379,16 +368,17 @@ jobs:
 
       - name: Package JVM binding
         if: needs.plan.outputs.jvm == 'true'
-        run: boltffi pack java --deny-skipped
+        run: boltffi pack java --deny-skipped --cargo-arg=--profile=ci
 
       - name: Package C# binding
         if: needs.plan.outputs.csharp == 'true'
-        run: boltffi pack csharp --deny-skipped
+        run: boltffi pack csharp --deny-skipped --cargo-arg=--profile=ci
 
       - name: Package Python binding
         if: needs.plan.outputs.python == 'true'
         run: >-
           boltffi pack python --deny-skipped
+          --cargo-arg=--profile=ci
           --python "${{ steps.python.outputs.python-path }}"
 
       - name: Run selected console examples
@@ -408,7 +398,8 @@ jobs:
           if [[ "$RUN_CSHARP" == "true" ]]; then targets+=(csharp); fi
           if [[ "$RUN_JVM" == "true" ]]; then targets+=(java kotlin); fi
 
-          command=(cargo run --locked -p xtask -- example --no-package)
+          command=(cargo run --locked --profile ci -p xtask --
+            example --no-package --profile ci)
           if [[ "$RUN_PYTHON" == "true" ]]; then
             command+=(--python "$PYTHON_PATH")
           fi
@@ -434,21 +425,24 @@ jobs:
           rustup show active-toolchain
           rustup target add aarch64-apple-darwin
 
-      - name: Restore binding tools
+      - name: Restore Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          cache-targets: false
-          shared-key: bindings-tools-${{ runner.os }}
+          shared-key: ci-${{ runner.os }}
           save-if: false
 
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
 
       - name: Package Swift binding
-        run: boltffi --overlay boltffi.ci.toml pack apple --deny-skipped
+        run: >-
+          boltffi --overlay boltffi.ci.toml pack apple --deny-skipped
+          --cargo-arg=--profile=ci
 
       - name: Run packaged Swift example
-        run: cargo run --locked -p xtask -- example --no-package swift
+        run: >-
+          cargo run --locked --profile ci -p xtask --
+          example --no-package --profile ci swift
 
   links:
     name: CI / Links

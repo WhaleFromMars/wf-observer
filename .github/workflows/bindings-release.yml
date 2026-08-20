@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Validate package versions
         id: version
@@ -96,6 +98,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Clang
         if: runner.os == 'Linux'
@@ -164,7 +168,9 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-bin: true
+          cache-targets: false
           key: release-bindings-${{ matrix.id }}
+          save-if: false
 
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
@@ -180,6 +186,7 @@ jobs:
           name: wf-observer-java-${{ matrix.id }}-${{ needs.metadata.outputs.version }}
           path: dist/java
           if-no-files-found: error
+          retention-days: 7
 
       - name: Package Python bindings
         if: matrix.python
@@ -198,6 +205,7 @@ jobs:
           name: wf-observer-python-${{ matrix.id }}-${{ needs.metadata.outputs.version }}
           path: dist/python/wheelhouse/*.whl
           if-no-files-found: error
+          retention-days: 7
 
       # BoltFFI exposes its C# native build through `pack`; the single-RID
       # package produced here is discarded after extracting its native library.
@@ -221,6 +229,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
@@ -234,7 +244,9 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-bin: true
+          cache-targets: false
           key: release-bindings-csharp
+          save-if: false
 
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
@@ -273,6 +285,7 @@ jobs:
           name: wf-observer-csharp-${{ needs.metadata.outputs.version }}
           path: dist/csharp/packages/*.nupkg
           if-no-files-found: error
+          retention-days: 7
 
   apple:
     name: Package Apple bindings
@@ -285,6 +298,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust toolchain
         run: |
@@ -300,7 +315,9 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-bin: true
+          cache-targets: false
           key: release-bindings-apple
+          save-if: false
 
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
@@ -314,6 +331,7 @@ jobs:
           name: wf-observer-apple-${{ needs.metadata.outputs.version }}
           path: dist/apple
           if-no-files-found: error
+          retention-days: 7
 
   wasm:
     name: Package browser bindings
@@ -324,11 +342,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - name: Install Binaryen
+      - name: Install Binaryen 123
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes binaryen
+          archive="$RUNNER_TEMP/binaryen-version_123-x86_64-linux.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz
+          echo "e959f2170af4c20c552e9de3a0253704d6a9d2766e8fdb88e4d6ac4bae9388fe  $archive" \
+            | sha256sum --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/binaryen-version_123/bin/wasm-opt" --version
 
       - name: Install pinned Rust toolchain
         run: |
@@ -339,7 +367,9 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-bin: true
+          cache-targets: false
           key: release-bindings-wasm
+          save-if: false
 
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
@@ -353,3 +383,4 @@ jobs:
           name: wf-observer-wasm-${{ needs.metadata.outputs.version }}
           path: dist/wasm
           if-no-files-found: error
+          retention-days: 7

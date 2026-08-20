@@ -14,6 +14,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      cargo-patches:
+        update-types:
+          - patch
 
   - package-ecosystem: gradle
     directory: /examples

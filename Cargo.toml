@@ -28,7 +28,7 @@ iroh = {
 iroh-tickets = { version = "1.0" }
 irpc = { version = "0.17" }
 irpc-iroh = { version = "0.17" }
-getrandom = { version = "0.3.4", default-features = false }
+getrandom = { version = "0.4.3", default-features = false }
 
 # FFI
 boltffi = { version = "=0.30.1", default-features = false }
@@ -56,7 +56,7 @@ semver = { version = "1.0" }
 url = { version = "2.5.8" }
 itertools = { version = "0.15" }
 tempfile = { version = "3.23" }
-pollster = { version = "0.4" }
+pollster = { version = "1.0.1" }
 
 # Boilerplate Helpers
 display_doc = { version = "0.2" }

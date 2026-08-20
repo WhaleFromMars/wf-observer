@@ -1,0 +1,44 @@
+name: Warm JVM cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/jvm-cache-warm.yml"
+      - "examples/**/*.gradle.kts"
+      - "examples/gradle/wrapper/**"
+      - "examples/gradlew"
+      - "examples/gradlew.bat"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warm-jvm-cache
+  cancel-in-progress: true
+
+jobs:
+  gradle:
+    name: Warm Gradle dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+
+      - name: Resolve Gradle plugins
+        shell: bash
+        run: bash examples/gradlew -p examples --no-daemon --console=plain help

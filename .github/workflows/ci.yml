@@ -317,6 +317,37 @@ jobs:
           echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/binaryen-version_123/bin/wasm-opt" --version
 
+      - name: Install Java
+        if: needs.plan.outputs.jvm == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: needs.plan.outputs.jvm == 'true'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+
+      - name: Resolve Gradle plugins
+        if: needs.plan.outputs.jvm == 'true'
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            if bash examples/gradlew -p examples --no-daemon --console=plain help; then
+              exit 0
+            fi
+
+            if (( attempt == 3 )); then
+              echo "::error::Gradle plugin resolution failed after $attempt attempts"
+              exit 1
+            fi
+
+            delay=$((attempt * 15))
+            echo "::warning::Gradle plugin resolution failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
+
       - name: Restore binding tools
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -332,17 +363,6 @@ jobs:
       - name: Package browser binding
         if: needs.plan.outputs.wasm == 'true'
         run: boltffi pack wasm --deny-skipped
-
-      - name: Install Java
-        if: needs.plan.outputs.jvm == 'true'
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        if: needs.plan.outputs.jvm == 'true'
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
 
       - name: Install .NET SDK
         if: needs.plan.outputs.csharp == 'true'

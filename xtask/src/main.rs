@@ -14,6 +14,7 @@ use tempfile::TempDir;
 
 const TICKET_PREFIX: &str = "WF_OBSERVER_ENDPOINT_TICKET=";
 const START_TIMEOUT: Duration = Duration::from_secs(45);
+const EXAMPLE_TIMEOUT: Duration = Duration::from_mins(5);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Parser)]
@@ -36,6 +37,9 @@ enum Command {
         /// Python interpreter used to build and test the Python wheel.
         #[arg(long, default_value = "python")]
         python: PathBuf,
+        /// Cargo profile used for generated native libraries and the local service.
+        #[arg(long, default_value = "dev")]
+        profile: String,
     },
 }
 
@@ -96,11 +100,17 @@ fn main() -> anyhow::Result<()> {
             languages,
             no_package,
             python,
-        } => run_examples(&languages, no_package, &python),
+            profile,
+        } => run_examples(&languages, no_package, &python, &profile),
     }
 }
 
-fn run_examples(languages: &[Language], no_package: bool, python: &Path) -> anyhow::Result<()> {
+fn run_examples(
+    languages: &[Language],
+    no_package: bool,
+    python: &Path,
+    profile: &str,
+) -> anyhow::Result<()> {
     if languages.contains(&Language::Swift) && !cfg!(target_os = "macos") {
         bail!("the Swift console example requires macOS");
     }
@@ -108,14 +118,14 @@ fn run_examples(languages: &[Language], no_package: bool, python: &Path) -> anyh
     let root = workspace_root()?;
 
     if !no_package {
-        package_bindings(root, languages, python)?;
+        package_bindings(root, languages, python, profile)?;
     }
 
     let python_environment = languages
         .contains(&Language::Python)
         .then(|| prepare_python_environment(root, python))
         .transpose()?;
-    let service_binary = build_service(root)?;
+    let service_binary = build_service(root, profile)?;
     let (mut service, ticket) = RunningService::start(root, &service_binary)?;
 
     let examples_result = languages.iter().try_for_each(|&language| {
@@ -133,7 +143,12 @@ fn workspace_root() -> anyhow::Result<&'static Path> {
         .context("xtask must be located directly beneath the workspace root")
 }
 
-fn package_bindings(root: &Path, languages: &[Language], python: &Path) -> anyhow::Result<()> {
+fn package_bindings(
+    root: &Path,
+    languages: &[Language],
+    python: &Path,
+    profile: &str,
+) -> anyhow::Result<()> {
     let mut targets = Vec::new();
 
     for &language in languages {
@@ -148,7 +163,8 @@ fn package_bindings(root: &Path, languages: &[Language], python: &Path) -> anyho
         let mut command = ProcessCommand::new("boltffi");
         command
             .current_dir(root)
-            .args(["pack", target_name, "--deny-skipped"]);
+            .args(["pack", target_name, "--deny-skipped"])
+            .arg(format!("--cargo-arg=--profile={profile}"));
 
         if target == BindingTarget::Python {
             command.arg("--python").arg(python);
@@ -214,11 +230,12 @@ fn prepare_python_environment(root: &Path, python: &Path) -> anyhow::Result<Pyth
     })
 }
 
-fn build_service(root: &Path) -> anyhow::Result<PathBuf> {
+fn build_service(root: &Path, profile: &str) -> anyhow::Result<PathBuf> {
     let mut build = ProcessCommand::new("cargo");
     build
         .current_dir(root)
-        .args(["build", "--locked", "--quiet", "-p", "local-service"]);
+        .args(["build", "--locked", "--quiet", "--profile", profile])
+        .args(["-p", "local-service"]);
     run_command(&mut build, "build the local service")?;
 
     let metadata = ProcessCommand::new("cargo")
@@ -240,7 +257,7 @@ fn build_service(root: &Path) -> anyhow::Result<PathBuf> {
         .and_then(serde_json::Value::as_str)
         .context("Cargo metadata did not include its target directory")?;
     let service_binary = Path::new(target_directory)
-        .join("debug")
+        .join(profile_output_directory(profile))
         .join(format!("local-service{}", std::env::consts::EXE_SUFFIX));
 
     ensure!(
@@ -250,6 +267,13 @@ fn build_service(root: &Path) -> anyhow::Result<PathBuf> {
     );
 
     Ok(service_binary)
+}
+
+fn profile_output_directory(profile: &str) -> &str {
+    match profile {
+        "dev" => "debug",
+        profile => profile,
+    }
 }
 
 fn run_example(
@@ -268,7 +292,7 @@ fn run_example(
                 .current_dir(root)
                 .arg(root.join("examples/python/console/main.py"))
                 .arg(ticket);
-            run_command(&mut command, &action)
+            run_example_command(&mut command, &action)
         }
         Language::Csharp => {
             let packages =
@@ -281,7 +305,7 @@ fn run_example(
                 .arg(root.join("examples/csharp/console"))
                 .arg("--")
                 .arg(ticket);
-            run_command(&mut command, &action)
+            run_example_command(&mut command, &action)
         }
         Language::Java | Language::Kotlin => {
             let task = match language {
@@ -294,7 +318,7 @@ fn run_example(
                 .current_dir(root)
                 .args(["-p", "examples", "--no-daemon", task])
                 .arg(format!("--args={ticket}"));
-            run_command(&mut command, &action)
+            run_example_command(&mut command, &action)
         }
         Language::Swift => {
             let mut command = ProcessCommand::new("swift");
@@ -304,7 +328,7 @@ fn run_example(
                 .arg(root.join("examples/swift/console"))
                 .arg("WFObserverConsole")
                 .arg(ticket);
-            run_command(&mut command, &action)
+            run_example_command(&mut command, &action)
         }
     }
 }
@@ -323,6 +347,26 @@ fn run_command(command: &mut ProcessCommand, action: &str) -> anyhow::Result<()>
     let status = command
         .status()
         .with_context(|| format!("failed to {action}"))?;
+    ensure!(status.success(), "failed to {action}: {status}");
+    Ok(())
+}
+
+fn run_example_command(command: &mut ProcessCommand, action: &str) -> anyhow::Result<()> {
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to {action}"))?;
+    let status = wait_for_exit(&mut child, EXAMPLE_TIMEOUT)?;
+
+    let Some(status) = status else {
+        child
+            .kill()
+            .with_context(|| format!("failed to stop the timed-out process for {action}"))?;
+        child
+            .wait()
+            .with_context(|| format!("failed to reap the timed-out process for {action}"))?;
+        bail!("timed out after {EXAMPLE_TIMEOUT:?} while attempting to {action}");
+    };
+
     ensure!(status.success(), "failed to {action}: {status}");
     Ok(())
 }
@@ -364,8 +408,8 @@ impl RunningService {
             for line in BufReader::new(stdout).lines() {
                 match line {
                     Ok(line) => {
-                        if sender.send(Ok(line)).is_err() {
-                            return;
+                        if let Err(mpsc::SendError(Ok(line))) = sender.send(Ok(line)) {
+                            println!("{line}");
                         }
                     }
                     Err(error) => {

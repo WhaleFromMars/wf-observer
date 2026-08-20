@@ -13,12 +13,13 @@ where
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub(crate) async fn execute<F>(future: F) -> Result<F::Output, String>
 where
-    F: Future,
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
 {
     use std::sync::OnceLock;
 
     use tokio::runtime::{Builder, Runtime};
-    use tokio_util::context::TokioContext;
+    use tokio_util::task::AbortOnDropHandle;
 
     static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
 
@@ -32,7 +33,9 @@ where
         .as_ref()
         .map_err(Clone::clone)?;
 
-    Ok(TokioContext::new(future, runtime.handle().clone()).await)
+    AbortOnDropHandle::new(runtime.spawn(future))
+        .await
+        .map_err(|error| format!("WF Observer async task failed: {error}"))
 }
 
 #[cfg(all(test, not(all(target_family = "wasm", target_os = "unknown"))))]
@@ -40,24 +43,27 @@ mod tests {
     use std::{
         future::Future,
         pin::Pin,
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
+        sync::mpsc,
         task::{Context, Poll, Waker},
+        thread,
         time::Duration,
     };
 
     #[test]
-    fn drives_tokio_futures_without_a_host_runtime() -> Result<(), String> {
-        pollster::block_on(super::execute(async {
+    fn runs_futures_on_the_tokio_runtime() -> Result<(), String> {
+        let caller = thread::current().id();
+        let worker = pollster::block_on(super::execute(async {
             tokio::time::sleep(Duration::from_millis(1)).await;
-        }))
+            thread::current().id()
+        }))?;
+
+        assert_ne!(caller, worker);
+        Ok(())
     }
 
     #[test]
     fn cancellation_drops_the_inner_future() {
-        struct PendingUntilDropped(Arc<AtomicBool>);
+        struct PendingUntilDropped(mpsc::Sender<()>);
 
         impl Future for PendingUntilDropped {
             type Output = ();
@@ -69,16 +75,16 @@ mod tests {
 
         impl Drop for PendingUntilDropped {
             fn drop(&mut self) {
-                self.0.store(true, Ordering::Relaxed);
+                let _ = self.0.send(());
             }
         }
 
-        let dropped = Arc::new(AtomicBool::new(false));
-        let mut execution = Box::pin(super::execute(PendingUntilDropped(Arc::clone(&dropped))));
+        let (sender, receiver) = mpsc::channel();
+        let mut execution = Box::pin(super::execute(PendingUntilDropped(sender)));
         let mut context = Context::from_waker(Waker::noop());
 
         assert!(execution.as_mut().poll(&mut context).is_pending());
         drop(execution);
-        assert!(dropped.load(Ordering::Relaxed));
+        assert!(receiver.recv_timeout(Duration::from_secs(1)).is_ok());
     }
 }

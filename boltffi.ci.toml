@@ -4,3 +4,13 @@
 ios_architectures = []
 simulator_architectures = []
 macos_architectures = ["arm64"]
+
+# Pull-request packages are discarded after validation, so build WASM with the
+# fast CI profile and leave production optimization to the release workflow.
+# BoltFFI needs an explicit artifact path when Cargo uses a named profile.
+[targets.wasm]
+profile = "debug"
+artifact_path = "target/wasm32-unknown-unknown/ci/wf_observer_ffi.wasm"
+
+[targets.wasm.optimize]
+enabled = false

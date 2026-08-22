@@ -3,6 +3,40 @@ name = "local-service"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+default-run = "wf-observer-service"
+
+[[bin]]
+name = "wf-observer-service"
+path = "src/main.rs"
+
+[[bin]]
+name = "update-harness"
+path = "tests/fixtures/update_harness.rs"
+required-features = ["update-test-fixtures"]
+test = false
+bench = false
+
+[[bin]]
+name = "update-run-holder"
+path = "tests/fixtures/update_run_holder.rs"
+required-features = ["update-test-fixtures"]
+test = false
+bench = false
+
+[[bin]]
+name = "update-target-fixture"
+path = "tests/fixtures/update_target.rs"
+required-features = ["update-test-fixtures"]
+test = false
+bench = false
+
+[[test]]
+name = "self_update"
+path = "tests/self_update.rs"
+required-features = ["update-test-fixtures"]
+
+[features]
+update-test-fixtures = []
 
 [dependencies]
 memory-reader = { path = "../memory-reader" }
@@ -18,18 +52,24 @@ clap = { workspace = true, features = ["derive"] }
 clap-verbosity-flag = { workspace = true }
 derive_aliases = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 directories = { workspace = true }
 tempfile = { workspace = true }
+semver = { workspace = true }
+self-replace = { workspace = true }
+tough = { workspace = true, features = ["http"] }
+url = { workspace = true }
 
 hotpath = { workspace = true, features = ["tokio"] }
 
 [dev-dependencies]
 wf-observer = { path = "../wf-observer" }
 wf_observer_ffi = { path = "../wf-observer-ffi" }
+aws-lc-rs = { workspace = true }
 
 [lints]
 workspace = true

@@ -36,6 +36,7 @@ boltffi = { version = "=0.30.1", default-features = false }
 # Local application deps
 clap = { version = "4.6" }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
+aws-lc-rs = { version = "1.18" }
 tough = { version = "0.24" } # aws-labs impl of https://theupdateframework.io/
 self-replace = { version = "1.5" }
 

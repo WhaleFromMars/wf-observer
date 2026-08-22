@@ -4,11 +4,19 @@ use std::io::{self, Write as _};
 
 use anyhow::Context as _;
 use iroh_tickets::endpoint::EndpointTicket;
+use local_service::{instance::InstanceGuard, update::UpdatePaths};
 
 use crate::prelude::*;
 
 /// Runs until an operating-system or supervising-process shutdown arrives.
 pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
+    let update_paths = UpdatePaths::discover()?;
+    let instance = InstanceGuard::acquire(update_paths.coordination())?;
+    anyhow::ensure!(
+        !instance.update_requested()?,
+        "an update is ready to install; wait for it to finish before starting"
+    );
+
     let secret_key = crate::identity::load_or_create()?;
     let server = crate::transport::start(secret_key).await?;
 
@@ -35,9 +43,13 @@ pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> an
 
     info!(endpoint_id = %server.endpoint().id(), "local application started");
 
-    let shutdown_result = wait_for_shutdown(shutdown_on_stdin_close).await;
-    if shutdown_result.is_ok() {
-        info!("shutdown requested");
+    let shutdown_result = wait_for_shutdown(shutdown_on_stdin_close, &instance).await;
+    if let Ok(reason) = &shutdown_result {
+        match reason {
+            ShutdownReason::OperatingSystem => info!("operating-system shutdown requested"),
+            ShutdownReason::StdinClosed => info!("supervising process closed standard input"),
+            ShutdownReason::Update => info!("update shutdown requested"),
+        }
     }
 
     let server_result = server
@@ -56,14 +68,25 @@ pub(crate) fn print_endpoint() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn wait_for_shutdown(shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
-    if !shutdown_on_stdin_close {
-        return wait_for_operating_system_shutdown().await;
-    }
+#[derive(Clone, Copy, Debug)]
+enum ShutdownReason {
+    OperatingSystem,
+    StdinClosed,
+    Update,
+}
 
+async fn wait_for_shutdown(
+    shutdown_on_stdin_close: bool,
+    instance: &InstanceGuard,
+) -> anyhow::Result<ShutdownReason> {
     tokio::select! {
-        result = wait_for_operating_system_shutdown() => result,
-        result = wait_for_stdin_close() => result,
+        result = wait_for_operating_system_shutdown() => {
+            result.map(|()| ShutdownReason::OperatingSystem)
+        },
+        result = wait_for_stdin_close(), if shutdown_on_stdin_close => {
+            result.map(|()| ShutdownReason::StdinClosed)
+        },
+        result = instance.wait_for_update_request() => result.map(|()| ShutdownReason::Update),
     }
 }
 

@@ -3,7 +3,7 @@ use clap_verbosity_flag::{InfoLevel, Verbosity};
 
 /// Runs the local Warframe Observer application.
 #[derive(Debug, Parser)]
-#[command(version, arg_required_else_help = true)]
+#[command(name = "wf-observer-service", version, arg_required_else_help = true)]
 pub(crate) struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<InfoLevel>,

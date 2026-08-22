@@ -18,7 +18,7 @@ pub(crate) fn load_or_create() -> anyhow::Result<SecretKey> {
 }
 
 fn identity_path() -> anyhow::Result<PathBuf> {
-    let project = ProjectDirs::from("", "", "wf-observer")
+    let project = ProjectDirs::from("", "", local_service::APPLICATION_ID)
         .context("the operating system did not provide a local configuration directory")?;
 
     Ok(project.config_local_dir().join(IDENTITY_FILE))

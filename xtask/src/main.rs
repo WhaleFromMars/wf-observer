@@ -239,9 +239,10 @@ fn build_service(root: &Path) -> anyhow::Result<PathBuf> {
         .get("target_directory")
         .and_then(serde_json::Value::as_str)
         .context("Cargo metadata did not include its target directory")?;
-    let service_binary = Path::new(target_directory)
-        .join("debug")
-        .join(format!("local-service{}", std::env::consts::EXE_SUFFIX));
+    let service_binary = Path::new(target_directory).join("debug").join(format!(
+        "wf-observer-service{}",
+        std::env::consts::EXE_SUFFIX
+    ));
 
     ensure!(
         service_binary.is_file(),

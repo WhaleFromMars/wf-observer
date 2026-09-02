@@ -53,9 +53,10 @@ directories = { version = "6" }
 itertools = { version = "0.15" }
 tempfile = { version = "3.23" }
 pollster = { version = "1.0.1" }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 # Boilerplate Helpers
-display_doc = { version = "0.2" }
+displaydoc = { version = "0.2" }
 derive_more = { version = "2.1" }
 derive_aliases = { version = "0.4" }
 

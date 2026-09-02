@@ -5,7 +5,9 @@ mod application;
 mod cli;
 mod derive_alias;
 mod identity;
+mod paths;
 mod prelude;
+mod singleton;
 mod transport;
 
 use std::process::ExitCode;

@@ -5,12 +5,13 @@ use std::io::{self, Write as _};
 use anyhow::Context as _;
 use iroh_tickets::endpoint::EndpointTicket;
 
-use crate::prelude::*;
+use crate::{identity, paths, prelude::*, singleton::AgentLock, transport};
 
 /// Runs until an operating-system or supervising-process shutdown arrives.
 pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
-    let secret_key = crate::identity::load_or_create()?;
-    let server = crate::transport::start(secret_key).await?;
+    let _agent_lock = AgentLock::acquire(&paths::agent_lock_path()?)?;
+    let secret_key = identity::load_or_create()?;
+    let server = transport::start(secret_key).await?;
 
     if print_ticket {
         if tokio::time::timeout(
@@ -52,7 +53,7 @@ pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> an
 
 /// Prints the endpoint identifier shared with clients.
 pub(crate) fn print_endpoint() -> anyhow::Result<()> {
-    println!("{}", crate::identity::load_or_create()?.public());
+    println!("{}", identity::load_or_create()?.public());
     Ok(())
 }
 
@@ -116,7 +117,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ping_round_trip() -> anyhow::Result<()> {
-        let server = crate::transport::start(iroh::SecretKey::generate()).await?;
+        let server = transport::start(iroh::SecretKey::generate()).await?;
         let address = server.endpoint().addr();
 
         let exchange_result = async {
@@ -138,7 +139,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ffi_ping_round_trip() -> anyhow::Result<()> {
-        let server = crate::transport::start(iroh::SecretKey::generate()).await?;
+        let server = transport::start(iroh::SecretKey::generate()).await?;
         let ticket = iroh_tickets::endpoint::EndpointTicket::new(server.endpoint().addr());
 
         let exchange_result = async {

@@ -32,6 +32,4 @@ pub(crate) enum Command {
     },
     /// Prints the service's stable Iroh endpoint identifier.
     Endpoint,
-    /// Checks for and applies an available update.
-    Update,
 }

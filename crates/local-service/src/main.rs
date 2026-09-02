@@ -7,7 +7,6 @@ mod derive_alias;
 mod identity;
 mod prelude;
 mod transport;
-mod update;
 
 use std::process::ExitCode;
 
@@ -32,7 +31,6 @@ async fn main() -> ExitCode {
             shutdown_on_stdin_close,
         } => application::run(print_ticket, shutdown_on_stdin_close).await,
         cli::Command::Endpoint => application::print_endpoint(),
-        cli::Command::Update => Ok(()),
     };
 
     match result {

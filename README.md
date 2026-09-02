@@ -14,7 +14,7 @@ We only read memory. We never write to it or inject code.
 ```bash
 # be at the root of the repo
 # start the local service
-cargo run -p local-service -- run
+cargo run -p wf-observer-cli -- run
 # then in a separate terminal run the showcase
 cargo run -p example-rust-dioxus --features dioxus/desktop
 # launch the game at any point
@@ -34,7 +34,7 @@ minimal generated-binding consumers.
 CPU sampling is unavailable on Windows; omit `hotpath/hotpath-cpu` there.
 
 ```bash
-cargo run -p local-service --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu -- run
+cargo run -p wf-observer-cli --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu -- run
 ```
 
 ## License

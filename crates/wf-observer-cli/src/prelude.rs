@@ -1,4 +1,4 @@
-//! Common imports for local-service modules.
+//! Common imports for the Warframe Observer CLI modules.
 
 #[allow(
     unused_imports,

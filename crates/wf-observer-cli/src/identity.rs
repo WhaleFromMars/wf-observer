@@ -1,4 +1,4 @@
-//! Persistent Iroh identity for the local service.
+//! Persistent Iroh identity for Warframe Observer.
 
 use std::{
     fs,

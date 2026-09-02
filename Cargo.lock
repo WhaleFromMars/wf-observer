@@ -3093,31 +3093,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
-name = "local-service"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "clap-verbosity-flag",
- "derive_aliases",
- "directories",
- "hotpath",
- "iroh",
- "iroh-tickets",
- "irpc",
- "irpc-iroh",
- "memory-reader",
- "protocol",
- "serde",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "wf-observer",
- "wf_observer_ffi",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6035,6 +6010,31 @@ dependencies = [
  "irpc-iroh",
  "protocol",
  "serde",
+]
+
+[[package]]
+name = "wf-observer-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap-verbosity-flag",
+ "derive_aliases",
+ "directories",
+ "hotpath",
+ "iroh",
+ "iroh-tickets",
+ "irpc",
+ "irpc-iroh",
+ "memory-reader",
+ "protocol",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wf-observer",
+ "wf_observer_ffi",
 ]
 
 [[package]]

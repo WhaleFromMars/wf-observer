@@ -2,7 +2,7 @@
 resolver = "3"
 members = [
     "examples/rust/dioxus",
-    "crates/local-service",
+    "crates/wf-observer-cli",
     "crates/memory-reader",
     "crates/protocol",
     "crates/wf-observer",

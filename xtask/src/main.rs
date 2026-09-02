@@ -235,7 +235,7 @@ fn build_service(root: &Path, profile: &str) -> anyhow::Result<PathBuf> {
     build
         .current_dir(root)
         .args(["build", "--locked", "--quiet", "--profile", profile])
-        .args(["-p", "local-service"]);
+        .args(["-p", "wf-observer-cli"]);
     run_command(&mut build, "build the local service")?;
 
     let metadata = ProcessCommand::new("cargo")
@@ -258,7 +258,7 @@ fn build_service(root: &Path, profile: &str) -> anyhow::Result<PathBuf> {
         .context("Cargo metadata did not include its target directory")?;
     let service_binary = Path::new(target_directory)
         .join(profile_output_directory(profile))
-        .join(format!("local-service{}", std::env::consts::EXE_SUFFIX));
+        .join(format!("wf-observer{}", std::env::consts::EXE_SUFFIX));
 
     ensure!(
         service_binary.is_file(),

@@ -1,8 +1,12 @@
 [package]
-name = "local-service"
+name = "wf-observer-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "wf-observer"
+path = "src/main.rs"
 
 [dependencies]
 memory-reader = { path = "../memory-reader" }

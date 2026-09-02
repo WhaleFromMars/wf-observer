@@ -26,9 +26,9 @@ showcase *args:
 links *args:
     lychee {{ args }} './**/*.md' './**/*.rs' './**/*.toml' './**/*.yml' './**/*.yaml' './**/*.css'
 
-# Run a local-service command; defaults to `run`.
-service *args="run":
-    cargo run --locked -p local-service -- {{ args }}
+# Run a Warframe Observer CLI command; defaults to `run`.
+observer *args="run":
+    cargo run --locked -p wf-observer-cli -- {{ args }}
 
 # Package a BoltFFI target, such as `python`, `java`, `csharp`, `wasm`, or `apple`.
 binding target *args:

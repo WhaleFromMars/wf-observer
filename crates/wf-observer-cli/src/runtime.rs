@@ -4,12 +4,16 @@ use std::{
     fs,
     io::{self, Write as _},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
-use anyhow::Context as _;
+use anyhow::{Context as _, bail};
 use memory_reader::{ProcessInstance, Target};
 
 use crate::{paths, prelude::*, singleton::AgentLock};
+
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// A runtime record owned by one exact agent process instance.
 #[derive(Debug, ..Eq, ..Serde)]
@@ -22,17 +26,14 @@ struct RuntimeRecord {
 }
 
 impl RuntimeRecord {
-    fn new(target: &Target, endpoint_id: String) -> anyhow::Result<Self> {
-        let agent = ProcessInstance::for_pid(std::process::id())
-            .context("failed to identify the background agent process")?;
-
-        Ok(Self {
+    fn new(agent: ProcessInstance, target: &Target, endpoint_id: String) -> Self {
+        Self {
             application_version: env!("CARGO_PKG_VERSION").to_owned(),
             agent: agent.into(),
             target: target.instance().into(),
             target_executable: target.executable().to_owned(),
             endpoint_id,
-        })
+        }
     }
 
     fn processes_are_current(&self) -> bool {
@@ -49,10 +50,19 @@ struct RecordedProcess {
 }
 
 impl RecordedProcess {
-    fn is_current(self) -> bool {
+    fn current_instance(self) -> Option<ProcessInstance> {
         ProcessInstance::for_pid(self.pid)
-            .is_some_and(|instance| instance.start_marker() == self.start_marker)
+            .filter(|instance| instance.start_marker() == self.start_marker)
     }
+
+    fn is_current(self) -> bool {
+        self.current_instance().is_some()
+    }
+}
+
+#[derive(Debug, ..Eq, ..Serde)]
+struct ShutdownRequest {
+    agent: RecordedProcess,
 }
 
 impl From<ProcessInstance> for RecordedProcess {
@@ -67,38 +77,47 @@ impl From<ProcessInstance> for RecordedProcess {
 /// Removes a published record when its owning agent shuts down.
 pub(crate) struct Registration {
     path: PathBuf,
-    agent: RecordedProcess,
+    agent: ProcessInstance,
     registered: bool,
 }
 
 impl Registration {
     /// Atomically publishes the active agent after its target and transport are ready.
     pub(crate) fn publish(target: &Target, endpoint_id: String) -> anyhow::Result<Self> {
-        let record = RuntimeRecord::new(target, endpoint_id)?;
+        let agent = ProcessInstance::for_pid(std::process::id())
+            .context("failed to identify the background agent process")?;
+        let record = RuntimeRecord::new(agent, target, endpoint_id);
         let path = paths::runtime_record_path()?;
+        remove_optional(&paths::shutdown_request_path()?)
+            .context("failed to clear the stale shutdown request")?;
         write_atomic(&path, &record)?;
 
         Ok(Self {
             path,
-            agent: record.agent,
+            agent,
             registered: true,
         })
     }
 
     /// Removes this agent's record without removing a replacement record.
     pub(crate) fn unregister(mut self) -> anyhow::Result<()> {
-        let result = remove_if_owned_by(&self.path, self.agent);
+        let result = remove_if_owned_by(&self.path, self.agent.into());
         if result.is_ok() {
             self.registered = false;
         }
         result
+    }
+
+    /// Returns the exact process instance which owns this registration.
+    pub(crate) const fn agent(&self) -> ProcessInstance {
+        self.agent
     }
 }
 
 impl Drop for Registration {
     fn drop(&mut self) {
         if self.registered
-            && let Err(error) = remove_if_owned_by(&self.path, self.agent)
+            && let Err(error) = remove_if_owned_by(&self.path, self.agent.into())
         {
             warn!(%error, "failed to remove the agent runtime record");
         }
@@ -119,6 +138,34 @@ pub(crate) fn print_status() -> anyhow::Result<()> {
     println!("Target PID: {}", record.target.pid);
     println!("Iroh endpoint ID: {}", record.endpoint_id);
     Ok(())
+}
+
+/// Requests cooperative shutdown and waits for the current agent to exit.
+pub(crate) async fn stop() -> anyhow::Result<()> {
+    let Some(record) = current_record()? else {
+        println!("Agent is not running");
+        return Ok(());
+    };
+
+    let agent = record.agent;
+    let path = paths::shutdown_request_path()?;
+    write_atomic(&path, &ShutdownRequest { agent })?;
+    println!("Stopping agent (PID {})...", agent.pid);
+
+    wait_for_exit(agent).await?;
+    remove_shutdown_request_at(&path, agent)?;
+    println!("Agent stopped");
+    Ok(())
+}
+
+/// Returns whether the current shutdown request names `agent`.
+pub(crate) fn shutdown_requested(agent: ProcessInstance) -> anyhow::Result<bool> {
+    shutdown_requested_at(&paths::shutdown_request_path()?, agent.into())
+}
+
+/// Removes a shutdown request only when it names `agent`.
+pub(crate) fn clear_shutdown_request(agent: ProcessInstance) -> anyhow::Result<()> {
+    remove_shutdown_request_at(&paths::shutdown_request_path()?, agent.into())
 }
 
 fn current_record() -> anyhow::Result<Option<RuntimeRecord>> {
@@ -169,23 +216,63 @@ fn remove_if_owned_by(path: &Path, agent: RecordedProcess) -> anyhow::Result<()>
     Ok(())
 }
 
-fn write_atomic(path: &Path, record: &RuntimeRecord) -> anyhow::Result<()> {
+async fn wait_for_exit(agent: RecordedProcess) -> anyhow::Result<()> {
+    let result = tokio::time::timeout(SHUTDOWN_TIMEOUT, async {
+        while agent.is_current() {
+            tokio::time::sleep(SHUTDOWN_POLL_INTERVAL).await;
+        }
+    })
+    .await;
+
+    if result.is_err() {
+        bail!(
+            "agent process {} did not stop within {SHUTDOWN_TIMEOUT:?}",
+            agent.pid
+        );
+    }
+    Ok(())
+}
+
+fn shutdown_requested_at(path: &Path, agent: RecordedProcess) -> anyhow::Result<bool> {
+    let Some(bytes) = read_optional(path)? else {
+        return Ok(false);
+    };
+    let Ok(request) = serde_json::from_slice::<ShutdownRequest>(&bytes) else {
+        return Ok(false);
+    };
+    Ok(request.agent == agent)
+}
+
+fn remove_shutdown_request_at(path: &Path, agent: RecordedProcess) -> anyhow::Result<()> {
+    let Some(bytes) = read_optional(path)? else {
+        return Ok(());
+    };
+    let Ok(request) = serde_json::from_slice::<ShutdownRequest>(&bytes) else {
+        return Ok(());
+    };
+    if request.agent == agent {
+        remove_optional(path)?;
+    }
+    Ok(())
+}
+
+fn write_atomic(path: &Path, value: &impl serde::Serialize) -> anyhow::Result<()> {
     let parent = path
         .parent()
-        .context("the runtime record path does not have a parent directory")?;
+        .context("the runtime state path does not have a parent directory")?;
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
 
     let mut temporary = tempfile::Builder::new()
-        .prefix(".runtime-")
+        .prefix(".state-")
         .tempfile_in(parent)
-        .with_context(|| format!("failed to create a runtime record in {}", parent.display()))?;
-    serde_json::to_writer(&mut temporary, record).context("failed to encode the runtime record")?;
+        .with_context(|| format!("failed to create runtime state in {}", parent.display()))?;
+    serde_json::to_writer(&mut temporary, value).context("failed to encode the runtime state")?;
     temporary
         .write_all(b"\n")
-        .context("failed to finish the runtime record")?;
+        .context("failed to finish the runtime state")?;
     temporary
         .flush()
-        .context("failed to flush the runtime record")?;
+        .context("failed to flush the runtime state")?;
     temporary
         .persist(path)
         .map_err(|error| error.error)
@@ -213,10 +300,12 @@ fn remove_optional(path: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    fn current_instance() -> anyhow::Result<ProcessInstance> {
+        ProcessInstance::for_pid(std::process::id()).context("failed to identify the test process")
+    }
+
     fn current_process() -> anyhow::Result<RecordedProcess> {
-        ProcessInstance::for_pid(std::process::id())
-            .map(Into::into)
-            .context("failed to identify the test process")
+        current_instance().map(Into::into)
     }
 
     fn record(agent: RecordedProcess, target: RecordedProcess) -> RuntimeRecord {
@@ -281,10 +370,7 @@ mod tests {
     fn unregister_does_not_remove_a_replacement_record() -> anyhow::Result<()> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("runtime.json");
-        let owner = RecordedProcess {
-            pid: 10,
-            start_marker: 20,
-        };
+        let owner = current_instance()?;
         let replacement = record(
             RecordedProcess {
                 pid: 30,
@@ -313,8 +399,8 @@ mod tests {
     fn unregister_removes_its_own_record() -> anyhow::Result<()> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("runtime.json");
-        let owner = current_process()?;
-        write_atomic(&path, &record(owner, owner))?;
+        let owner = current_instance()?;
+        write_atomic(&path, &record(owner.into(), owner.into()))?;
 
         Registration {
             path: path.clone(),
@@ -323,6 +409,27 @@ mod tests {
         }
         .unregister()?;
 
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn shutdown_request_applies_only_to_its_agent() -> anyhow::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("shutdown.json");
+        let requested = current_process()?;
+        let other = RecordedProcess {
+            pid: requested.pid.wrapping_add(1),
+            start_marker: requested.start_marker,
+        };
+        write_atomic(&path, &ShutdownRequest { agent: requested })?;
+
+        assert!(shutdown_requested_at(&path, requested)?);
+        assert!(!shutdown_requested_at(&path, other)?);
+
+        remove_shutdown_request_at(&path, other)?;
+        assert!(path.exists());
+        remove_shutdown_request_at(&path, requested)?;
         assert!(!path.exists());
         Ok(())
     }

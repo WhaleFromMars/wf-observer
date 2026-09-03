@@ -14,7 +14,7 @@ use crate::{
     startup,
 };
 
-const TARGET_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const LIFECYCLE_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Runs the hidden background-agent entrypoint.
 pub(crate) async fn run(pid: u32, start_marker: u64) -> anyhow::Result<()> {
@@ -79,7 +79,11 @@ impl RunningAgent {
     }
 
     async fn run(self) -> anyhow::Result<()> {
-        let shutdown = wait_for_shutdown(self.attachment.target().instance()).await;
+        let shutdown = wait_for_shutdown(
+            self.registration.agent(),
+            self.attachment.target().instance(),
+        )
+        .await;
         self.shutdown(shutdown).await
     }
 
@@ -96,12 +100,14 @@ impl RunningAgent {
             attachment,
             registration,
         } = self;
+        let clear_request = crate::runtime::clear_shutdown_request(registration.agent());
         let unregister = registration.unregister();
         let shutdown = application.shutdown().await;
         drop(attachment);
         info!("background agent stopped");
 
         reason?;
+        clear_request?;
         unregister?;
         shutdown
     }
@@ -128,21 +134,30 @@ fn rediscover_target(pid: u32, start_marker: u64) -> anyhow::Result<Target> {
         .with_context(|| format!("process {pid} is no longer a supported target"))
 }
 
-async fn wait_for_shutdown(instance: ProcessInstance) -> anyhow::Result<ShutdownReason> {
+async fn wait_for_shutdown(
+    agent: ProcessInstance,
+    target: ProcessInstance,
+) -> anyhow::Result<ShutdownReason> {
     tokio::select! {
         result = application::wait_for_operating_system_shutdown() => {
             result?;
             Ok(ShutdownReason::Requested)
         }
-        () = wait_for_target_exit(instance) => Ok(ShutdownReason::TargetExited),
+        result = wait_for_lifecycle_change(agent, target) => result,
     }
 }
 
-async fn wait_for_target_exit(instance: ProcessInstance) {
+async fn wait_for_lifecycle_change(
+    agent: ProcessInstance,
+    target: ProcessInstance,
+) -> anyhow::Result<ShutdownReason> {
     loop {
-        tokio::time::sleep(TARGET_POLL_INTERVAL).await;
-        if !instance.is_current() {
-            return;
+        tokio::time::sleep(LIFECYCLE_POLL_INTERVAL).await;
+        if crate::runtime::shutdown_requested(agent)? {
+            return Ok(ShutdownReason::Requested);
+        }
+        if !target.is_current() {
+            return Ok(ShutdownReason::TargetExited);
         }
     }
 }

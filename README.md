@@ -16,6 +16,7 @@ is not implemented yet.
 
 Use `wf-observer status` to inspect the running agent, its Warframe process,
 version, and Iroh endpoint identifier.
+Use `wf-observer stop` to request a shutdown without closing Warframe.
 
 ## Running the example integration
 

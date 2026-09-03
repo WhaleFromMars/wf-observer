@@ -25,6 +25,8 @@ pub(crate) enum Command {
     Attach,
     /// Reports the current background agent and target.
     Status,
+    /// Stops the current background agent.
+    Stop,
     /// Runs the targetless transport used by integration tests.
     #[command(name = "_serve", hide = true)]
     Serve {

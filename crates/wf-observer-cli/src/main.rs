@@ -35,6 +35,7 @@ async fn main() -> ExitCode {
     let result = match args.command() {
         cli::Command::Attach => launch::attach().await,
         cli::Command::Status => runtime::print_status(),
+        cli::Command::Stop => runtime::stop().await,
         cli::Command::Serve {
             print_ticket,
             shutdown_on_stdin_close,

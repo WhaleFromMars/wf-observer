@@ -31,6 +31,12 @@ tempfile = { workspace = true }
 
 hotpath = { workspace = true, features = ["tokio"] }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
+
 [dev-dependencies]
 wf-observer = { path = "../wf-observer" }
 wf_observer_ffi = { path = "../wf-observer-ffi" }

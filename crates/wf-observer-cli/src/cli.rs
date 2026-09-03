@@ -21,8 +21,11 @@ impl Cli {
 /// Top-level application commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Runs in the foreground.
-    Run {
+    /// Attaches a background agent to the running Warframe process.
+    Attach,
+    /// Runs the targetless transport used by integration tests.
+    #[command(name = "_serve", hide = true)]
+    Serve {
         /// Prints a connection ticket after the transport has bound.
         #[arg(long)]
         print_ticket: bool,
@@ -32,4 +35,14 @@ pub(crate) enum Command {
     },
     /// Prints the service's stable Iroh endpoint identifier.
     Endpoint,
+    /// Runs the internal target-bound background process.
+    #[command(name = "_agent", hide = true)]
+    Agent {
+        /// Target process identifier selected by the invoking CLI.
+        #[arg(long)]
+        pid: u32,
+        /// Platform-specific target process creation marker.
+        #[arg(long)]
+        start_marker: u64,
+    },
 }

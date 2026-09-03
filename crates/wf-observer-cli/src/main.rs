@@ -1,13 +1,16 @@
 #[macro_use(derive)]
 extern crate derive_aliases;
 
+mod agent;
 mod application;
 mod cli;
 mod derive_alias;
 mod identity;
+mod launch;
 mod paths;
 mod prelude;
 mod singleton;
+mod startup;
 mod transport;
 
 use std::process::ExitCode;
@@ -25,14 +28,17 @@ async fn main() -> ExitCode {
 
     tracing_subscriber::fmt()
         .with_max_level(args.verbosity)
+        .with_writer(std::io::stderr)
         .init();
 
     let result = match args.command() {
-        cli::Command::Run {
+        cli::Command::Attach => launch::attach().await,
+        cli::Command::Serve {
             print_ticket,
             shutdown_on_stdin_close,
         } => application::run(print_ticket, shutdown_on_stdin_close).await,
         cli::Command::Endpoint => application::print_endpoint(),
+        cli::Command::Agent { pid, start_marker } => agent::run(pid, start_marker).await,
     };
 
     match result {

@@ -6028,6 +6028,7 @@ dependencies = [
  "irpc-iroh",
  "memory-reader",
  "protocol",
+ "rustix 1.1.4",
  "serde",
  "tempfile",
  "tokio",
@@ -6035,6 +6036,7 @@ dependencies = [
  "tracing-subscriber",
  "wf-observer",
  "wf_observer_ffi",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -383,7 +383,7 @@ impl RunningService {
     fn start(root: &Path, binary: &Path) -> anyhow::Result<(Self, String)> {
         let child = ProcessCommand::new(binary)
             .current_dir(root)
-            .args(["run", "--print-ticket", "--shutdown-on-stdin-close"])
+            .args(["_serve", "--print-ticket", "--shutdown-on-stdin-close"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

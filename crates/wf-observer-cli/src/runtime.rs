@@ -17,7 +17,7 @@ const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// A runtime record owned by one exact agent process instance.
 #[derive(Debug, ..Eq, ..Serde)]
-struct RuntimeRecord {
+pub(crate) struct AgentInfo {
     application_version: String,
     agent: RecordedProcess,
     target: RecordedProcess,
@@ -25,7 +25,7 @@ struct RuntimeRecord {
     endpoint_id: String,
 }
 
-impl RuntimeRecord {
+impl AgentInfo {
     fn new(agent: ProcessInstance, target: &Target, endpoint_id: String) -> Self {
         Self {
             application_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -40,6 +40,26 @@ impl RuntimeRecord {
         let agent_is_current = self.agent.is_current();
         let target_is_current = self.target.is_current();
         agent_is_current && target_is_current
+    }
+
+    /// Returns the version of the executable which launched this agent.
+    pub(crate) fn version(&self) -> &str {
+        &self.application_version
+    }
+
+    /// Returns the agent's operating-system process identifier.
+    pub(crate) const fn pid(&self) -> u32 {
+        self.agent.pid
+    }
+
+    /// Returns whether the agent is attached to `target`.
+    pub(crate) fn is_attached_to(&self, target: ProcessInstance) -> bool {
+        self.target == target.into()
+    }
+
+    /// Returns whether this agent already satisfies an attachment request.
+    pub(crate) fn is_compatible_with(&self, version: &str, target: ProcessInstance) -> bool {
+        self.version() == version && self.is_attached_to(target)
     }
 }
 
@@ -86,7 +106,7 @@ impl Registration {
     pub(crate) fn publish(target: &Target, endpoint_id: String) -> anyhow::Result<Self> {
         let agent = ProcessInstance::for_pid(std::process::id())
             .context("failed to identify the background agent process")?;
-        let record = RuntimeRecord::new(agent, target, endpoint_id);
+        let record = AgentInfo::new(agent, target, endpoint_id);
         let path = paths::runtime_record_path()?;
         remove_optional(&paths::shutdown_request_path()?)
             .context("failed to clear the stale shutdown request")?;
@@ -126,7 +146,7 @@ impl Drop for Registration {
 
 /// Prints the current target-bound agent metadata.
 pub(crate) fn print_status() -> anyhow::Result<()> {
-    let Some(record) = current_record()? else {
+    let Some(record) = current_agent()? else {
         println!("Agent: not running");
         return Ok(());
     };
@@ -142,19 +162,25 @@ pub(crate) fn print_status() -> anyhow::Result<()> {
 
 /// Requests cooperative shutdown and waits for the current agent to exit.
 pub(crate) async fn stop() -> anyhow::Result<()> {
-    let Some(record) = current_record()? else {
+    let Some(record) = current_agent()? else {
         println!("Agent is not running");
         return Ok(());
     };
 
-    let agent = record.agent;
-    let path = paths::shutdown_request_path()?;
-    write_atomic(&path, &ShutdownRequest { agent })?;
-    println!("Stopping agent (PID {})...", agent.pid);
-
-    wait_for_exit(agent).await?;
-    remove_shutdown_request_at(&path, agent)?;
+    println!("Stopping agent (PID {})...", record.pid());
+    stop_agent(&record).await?;
     println!("Agent stopped");
+    Ok(())
+}
+
+/// Requests cooperative shutdown of `agent` and waits for that process instance to exit.
+pub(crate) async fn stop_agent(agent: &AgentInfo) -> anyhow::Result<()> {
+    let instance = agent.agent;
+    let path = paths::shutdown_request_path()?;
+    write_atomic(&path, &ShutdownRequest { agent: instance })?;
+
+    wait_for_exit(instance).await?;
+    remove_shutdown_request_at(&path, instance)?;
     Ok(())
 }
 
@@ -168,21 +194,22 @@ pub(crate) fn clear_shutdown_request(agent: ProcessInstance) -> anyhow::Result<(
     remove_shutdown_request_at(&paths::shutdown_request_path()?, agent.into())
 }
 
-fn current_record() -> anyhow::Result<Option<RuntimeRecord>> {
+/// Returns the active agent after independently validating it and its target.
+pub(crate) fn current_agent() -> anyhow::Result<Option<AgentInfo>> {
     let path = paths::runtime_record_path()?;
     let lock_path = paths::agent_lock_path()?;
-    current_record_at(&path, &lock_path)
+    current_agent_at(&path, &lock_path)
 }
 
-fn current_record_at(path: &Path, lock_path: &Path) -> anyhow::Result<Option<RuntimeRecord>> {
+fn current_agent_at(path: &Path, lock_path: &Path) -> anyhow::Result<Option<AgentInfo>> {
     let Some(bytes) = read_optional(path)? else {
         return Ok(None);
     };
 
-    let record = serde_json::from_slice::<RuntimeRecord>(&bytes).ok();
+    let record = serde_json::from_slice::<AgentInfo>(&bytes).ok();
     if record
         .as_ref()
-        .is_some_and(RuntimeRecord::processes_are_current)
+        .is_some_and(AgentInfo::processes_are_current)
     {
         return Ok(record);
     }
@@ -207,7 +234,7 @@ fn remove_if_owned_by(path: &Path, agent: RecordedProcess) -> anyhow::Result<()>
     let Some(bytes) = read_optional(path)? else {
         return Ok(());
     };
-    let Ok(record) = serde_json::from_slice::<RuntimeRecord>(&bytes) else {
+    let Ok(record) = serde_json::from_slice::<AgentInfo>(&bytes) else {
         return Ok(());
     };
     if record.agent == agent {
@@ -308,8 +335,8 @@ mod tests {
         current_instance().map(Into::into)
     }
 
-    fn record(agent: RecordedProcess, target: RecordedProcess) -> RuntimeRecord {
-        RuntimeRecord {
+    fn record(agent: RecordedProcess, target: RecordedProcess) -> AgentInfo {
+        AgentInfo {
             application_version: "1.2.3".to_owned(),
             agent,
             target,
@@ -327,7 +354,7 @@ mod tests {
         let expected = record(process, process);
         write_atomic(&path, &expected)?;
 
-        assert_eq!(current_record_at(&path, &lock_path)?, Some(expected));
+        assert_eq!(current_agent_at(&path, &lock_path)?, Some(expected));
         assert!(path.exists());
         Ok(())
     }
@@ -343,7 +370,7 @@ mod tests {
         };
         write_atomic(&path, &record(stale, current_process()?))?;
 
-        assert_eq!(current_record_at(&path, &lock_path)?, None);
+        assert_eq!(current_agent_at(&path, &lock_path)?, None);
         assert!(!path.exists());
         Ok(())
     }
@@ -360,7 +387,7 @@ mod tests {
         write_atomic(&path, &record(stale, current_process()?))?;
         let lock = AgentLock::acquire(&lock_path)?;
 
-        assert_eq!(current_record_at(&path, &lock_path)?, None);
+        assert_eq!(current_agent_at(&path, &lock_path)?, None);
         assert!(path.exists());
         drop(lock);
         Ok(())
@@ -388,10 +415,7 @@ mod tests {
         .unregister()?;
 
         let bytes = fs::read(path)?;
-        assert_eq!(
-            serde_json::from_slice::<RuntimeRecord>(&bytes)?,
-            replacement
-        );
+        assert_eq!(serde_json::from_slice::<AgentInfo>(&bytes)?, replacement);
         Ok(())
     }
 
@@ -431,6 +455,26 @@ mod tests {
         assert!(path.exists());
         remove_shutdown_request_at(&path, requested)?;
         assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn compatibility_requires_the_same_version_and_target() -> anyhow::Result<()> {
+        let target = current_instance()?;
+        let info = record(current_process()?, target.into());
+
+        assert!(info.is_compatible_with("1.2.3", target));
+        assert!(!info.is_compatible_with("2.0.0", target));
+        assert!(
+            !record(
+                current_process()?,
+                RecordedProcess {
+                    pid: target.pid().wrapping_add(1),
+                    start_marker: target.start_marker(),
+                },
+            )
+            .is_compatible_with("1.2.3", target)
+        );
         Ok(())
     }
 }

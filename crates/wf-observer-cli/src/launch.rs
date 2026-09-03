@@ -6,10 +6,16 @@ use anyhow::{Context as _, bail};
 use memory_reader::Target;
 use tokio::process::{Child, Command};
 
-use crate::startup::{self, Status};
+use crate::{
+    paths,
+    runtime::{self, AgentInfo},
+    singleton::AgentLock,
+    startup::{self, Status},
+};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const FAILED_CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+const RECONCILIATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Discovers Warframe, proves access, and starts its background agent.
 pub(crate) async fn attach() -> anyhow::Result<()> {
@@ -17,6 +23,10 @@ pub(crate) async fn attach() -> anyhow::Result<()> {
     let instance = target.instance();
 
     println!("Found {} (PID {})", target.executable(), instance.pid());
+
+    if reconcile_existing_agent(&target).await? {
+        return Ok(());
+    }
 
     let attachment = memory_reader::attach(&target).with_context(|| {
         format!(
@@ -27,6 +37,40 @@ pub(crate) async fn attach() -> anyhow::Result<()> {
     })?;
     drop(attachment);
 
+    launch_agent(&target).await
+}
+
+async fn launch_agent(target: &Target) -> anyhow::Result<()> {
+    let mut retries_remaining = 1;
+
+    loop {
+        match launch_agent_once(target).await {
+            Ok(agent_pid) => {
+                println!("Agent started (PID {agent_pid})");
+                return Ok(());
+            }
+            Err(error) => match competing_agent(target).await {
+                Ok(CompetingAgent::Compatible) => {
+                    report_already_attached(target);
+                    return Ok(());
+                }
+                Ok(CompetingAgent::Vacant) if retries_remaining > 0 => {
+                    retries_remaining -= 1;
+                }
+                Ok(CompetingAgent::Incompatible | CompetingAgent::Vacant) => return Err(error),
+                Err(reconciliation_error) => {
+                    return Err(error.context(format!(
+                        "failed to inspect the competing background agent: \
+                         {reconciliation_error}"
+                    )));
+                }
+            },
+        }
+    }
+}
+
+async fn launch_agent_once(target: &Target) -> anyhow::Result<u32> {
+    let instance = target.instance();
     let mut child = spawn_agent(instance.pid(), instance.start_marker())?;
     let agent_pid = child
         .id()
@@ -40,7 +84,8 @@ pub(crate) async fn attach() -> anyhow::Result<()> {
         Ok(Ok(status)) => status,
         Ok(Err(error)) => {
             reap_failed_child(&mut child).await?;
-            return Err(error).context("failed to read the background agent startup status");
+            return Err(anyhow::Error::new(error)
+                .context("failed to read the background agent startup status"));
         }
         Err(_) => {
             terminate_child(&mut child).await?;
@@ -57,13 +102,77 @@ pub(crate) async fn attach() -> anyhow::Result<()> {
                 bail!("background agent exited during startup: {exit_status}");
             }
 
-            println!("Agent started (PID {agent_pid})");
-            Ok(())
+            Ok(agent_pid)
         }
         Status::Failed(message) => {
             reap_failed_child(&mut child).await?;
-            bail!("{message}");
+            Err(anyhow::Error::msg(message))
         }
+    }
+}
+
+async fn reconcile_existing_agent(target: &Target) -> anyhow::Result<bool> {
+    let Some(agent) = runtime::current_agent()? else {
+        return Ok(false);
+    };
+
+    if is_compatible(&agent, target) {
+        report_already_attached(target);
+        return Ok(true);
+    }
+
+    if agent.version() != env!("CARGO_PKG_VERSION") {
+        println!("Existing agent version: {}", agent.version());
+        println!("Installed version:      {}", env!("CARGO_PKG_VERSION"));
+    }
+    if !agent.is_attached_to(target.instance()) {
+        println!("Existing agent is attached to an old Warframe process.");
+    }
+
+    println!("Replacing existing agent...");
+    runtime::stop_agent(&agent)
+        .await
+        .context("failed to stop the existing background agent")?;
+    Ok(false)
+}
+
+fn is_compatible(agent: &AgentInfo, target: &Target) -> bool {
+    agent.is_compatible_with(env!("CARGO_PKG_VERSION"), target.instance())
+}
+
+fn report_already_attached(target: &Target) {
+    println!("Agent already attached to PID {}", target.instance().pid());
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompetingAgent {
+    Compatible,
+    Incompatible,
+    Vacant,
+}
+
+async fn competing_agent(target: &Target) -> anyhow::Result<CompetingAgent> {
+    let lock_path = paths::agent_lock_path()?;
+    let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
+
+    loop {
+        if let Some(agent) = runtime::current_agent()? {
+            return Ok(if is_compatible(&agent, target) {
+                CompetingAgent::Compatible
+            } else {
+                CompetingAgent::Incompatible
+            });
+        }
+
+        if let Some(lock) = AgentLock::try_acquire(&lock_path)? {
+            drop(lock);
+            return Ok(CompetingAgent::Vacant);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            bail!("competing background agent did not become ready within {STARTUP_TIMEOUT:?}");
+        }
+
+        tokio::time::sleep(RECONCILIATION_POLL_INTERVAL).await;
     }
 }
 

@@ -1,4 +1,4 @@
-//! Common derive combinations used by the local service.
+//! Common derive combinations used by the Warframe Observer CLI.
 
 #![allow(
     unused_macros,

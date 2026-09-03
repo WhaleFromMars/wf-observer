@@ -5,17 +5,39 @@ use std::io::{self, Write as _};
 use anyhow::Context as _;
 use iroh_tickets::endpoint::EndpointTicket;
 
-use crate::prelude::*;
+use crate::{identity, paths, prelude::*, singleton::AgentLock, transport};
 
-/// Runs until an operating-system or supervising-process shutdown arrives.
-pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
-    let secret_key = crate::identity::load_or_create()?;
-    let server = crate::transport::start(secret_key).await?;
+/// A running local application and its exclusive instance ownership.
+pub(crate) struct RunningApplication {
+    lock: AgentLock,
+    server: transport::Server,
+}
 
-    if print_ticket {
+impl RunningApplication {
+    /// Acquires instance ownership and starts the local transport.
+    pub(crate) async fn start() -> anyhow::Result<Self> {
+        let lock = AgentLock::acquire(&paths::agent_lock_path()?)?;
+        Self::start_with_lock(lock).await
+    }
+
+    /// Starts the local transport with ownership acquired by its caller.
+    pub(crate) async fn start_with_lock(lock: AgentLock) -> anyhow::Result<Self> {
+        let secret_key = identity::load_or_create()?;
+        let server = transport::start(secret_key).await?;
+
+        Ok(Self { lock, server })
+    }
+
+    /// Returns the running transport endpoint.
+    pub(crate) fn endpoint(&self) -> &iroh::Endpoint {
+        self.server.endpoint()
+    }
+
+    /// Prints a connection ticket once the endpoint has had a chance to register.
+    pub(crate) async fn print_ticket(&self) -> anyhow::Result<()> {
         if tokio::time::timeout(
             std::time::Duration::from_secs(iroh::NET_REPORT_TIMEOUT),
-            server.endpoint().online(),
+            self.endpoint().online(),
         )
         .await
         .is_err()
@@ -23,37 +45,48 @@ pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> an
             warn!("relay registration timed out; printing the available endpoint addresses");
         }
 
-        let ticket = EndpointTicket::new(server.endpoint().addr());
+        let ticket = EndpointTicket::new(self.endpoint().addr());
         let mut stdout = io::stdout().lock();
 
         writeln!(stdout, "WF_OBSERVER_ENDPOINT_TICKET={ticket}")
             .context("failed to print the endpoint ticket")?;
         stdout
             .flush()
-            .context("failed to flush the endpoint ticket")?;
+            .context("failed to flush the endpoint ticket")
     }
 
-    info!(endpoint_id = %server.endpoint().id(), "local application started");
+    /// Shuts down the transport before releasing instance ownership.
+    pub(crate) async fn shutdown(self) -> anyhow::Result<()> {
+        let Self { lock, server } = self;
+        let result = server
+            .shutdown()
+            .await
+            .context("failed to shut down the local transport");
+        drop(lock);
+        result
+    }
+}
+
+/// Runs until an operating-system or supervising-process shutdown arrives.
+pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
+    let application = RunningApplication::start().await?;
+
+    if print_ticket {
+        application.print_ticket().await?;
+    }
+
+    info!(endpoint_id = %application.endpoint().id(), "local application started");
 
     let shutdown_result = wait_for_shutdown(shutdown_on_stdin_close).await;
     if shutdown_result.is_ok() {
         info!("shutdown requested");
     }
 
-    let server_result = server
-        .shutdown()
-        .await
-        .context("failed to shut down the local transport");
+    let server_result = application.shutdown().await;
     info!("local application stopped");
 
     shutdown_result?;
     server_result
-}
-
-/// Prints the endpoint identifier shared with clients.
-pub(crate) fn print_endpoint() -> anyhow::Result<()> {
-    println!("{}", crate::identity::load_or_create()?.public());
-    Ok(())
 }
 
 async fn wait_for_shutdown(shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
@@ -86,14 +119,14 @@ async fn wait_for_stdin_close() -> anyhow::Result<()> {
 }
 
 #[cfg(not(unix))]
-async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
+pub(crate) async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
     tokio::signal::ctrl_c()
         .await
         .context("failed to listen for Ctrl+C")
 }
 
 #[cfg(unix)]
-async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
+pub(crate) async fn wait_for_operating_system_shutdown() -> anyhow::Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
 
     let mut terminate = signal(SignalKind::terminate()).context("failed to listen for SIGTERM")?;
@@ -116,7 +149,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ping_round_trip() -> anyhow::Result<()> {
-        let server = crate::transport::start(iroh::SecretKey::generate()).await?;
+        let server = transport::start(iroh::SecretKey::generate()).await?;
         let address = server.endpoint().addr();
 
         let exchange_result = async {
@@ -138,7 +171,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ffi_ping_round_trip() -> anyhow::Result<()> {
-        let server = crate::transport::start(iroh::SecretKey::generate()).await?;
+        let server = transport::start(iroh::SecretKey::generate()).await?;
         let ticket = iroh_tickets::endpoint::EndpointTicket::new(server.endpoint().addr());
 
         let exchange_result = async {

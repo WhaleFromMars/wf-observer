@@ -1,4 +1,4 @@
-//! Persistent Iroh identity for the local service.
+//! Persistent Iroh identity for Warframe Observer.
 
 use std::{
     fs,
@@ -7,7 +7,6 @@ use std::{
 };
 
 use anyhow::Context as _;
-use directories::ProjectDirs;
 use iroh::SecretKey;
 
 const IDENTITY_FILE: &str = "identity.key";
@@ -18,8 +17,7 @@ pub(crate) fn load_or_create() -> anyhow::Result<SecretKey> {
 }
 
 fn identity_path() -> anyhow::Result<PathBuf> {
-    let project = ProjectDirs::from("", "", "wf-observer")
-        .context("the operating system did not provide a local configuration directory")?;
+    let project = crate::paths::project_directories()?;
 
     Ok(project.config_local_dir().join(IDENTITY_FILE))
 }

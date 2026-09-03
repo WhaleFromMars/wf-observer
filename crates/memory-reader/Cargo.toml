@@ -9,6 +9,11 @@ memflow = { version = "0.2.4" }
 memflow-native = { version = "0.2.6" }
 
 hotpath = { workspace = true }
+derive_more = { workspace = true, features = ["error"] }
+displaydoc.workspace = true
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+sysinfo = { workspace = true }
 
 [lints]
 workspace = true

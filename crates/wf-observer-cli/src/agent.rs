@@ -9,6 +9,7 @@ use crate::{
     application::{self, RunningApplication},
     paths,
     prelude::*,
+    runtime::Registration,
     singleton::AgentLock,
     startup,
 };
@@ -30,6 +31,8 @@ pub(crate) async fn run(pid: u32, start_marker: u64) -> anyhow::Result<()> {
 }
 
 struct RunningAgent {
+    // Keep this before `application` so fallback cleanup runs while its lock is held.
+    registration: Registration,
     application: RunningApplication,
     attachment: AttachedTarget,
 }
@@ -44,6 +47,21 @@ impl RunningAgent {
             .with_context(|| format!("failed to attach to target process {pid}"))?;
         let instance = attachment.target().instance();
         let application = RunningApplication::start_with_lock(lock).await?;
+        let registration = match Registration::publish(
+            attachment.target(),
+            application.endpoint().id().to_string(),
+        ) {
+            Ok(registration) => registration,
+            Err(error) => {
+                return match application.shutdown().await {
+                    Ok(()) => Err(error),
+                    Err(shutdown_error) => Err(error.context(format!(
+                        "failed to shut down after the runtime record could not be published: \
+                         {shutdown_error}"
+                    ))),
+                };
+            }
+        };
 
         info!(
             target_pid = instance.pid(),
@@ -54,6 +72,7 @@ impl RunningAgent {
         );
 
         Ok(Self {
+            registration,
             application,
             attachment,
         })
@@ -75,12 +94,15 @@ impl RunningAgent {
         let Self {
             application,
             attachment,
+            registration,
         } = self;
+        let unregister = registration.unregister();
         let shutdown = application.shutdown().await;
         drop(attachment);
         info!("background agent stopped");
 
         reason?;
+        unregister?;
         shutdown
     }
 }

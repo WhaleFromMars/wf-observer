@@ -14,6 +14,9 @@ Warframe to be open. The agent shuts itself down when Warframe closes. A
 foreground diagnostic mode, `wf-observer attach --foreground`, is planned but
 is not implemented yet.
 
+Use `wf-observer status` to inspect the running agent, its Warframe process,
+version, and Iroh endpoint identifier.
+
 ## Running the example integration
 
 ```bash

@@ -23,6 +23,8 @@ impl Cli {
 pub(crate) enum Command {
     /// Attaches a background agent to the running Warframe process.
     Attach,
+    /// Reports the current background agent and target.
+    Status,
     /// Runs the targetless transport used by integration tests.
     #[command(name = "_serve", hide = true)]
     Serve {
@@ -33,8 +35,6 @@ pub(crate) enum Command {
         #[arg(long)]
         shutdown_on_stdin_close: bool,
     },
-    /// Prints the service's stable Iroh endpoint identifier.
-    Endpoint,
     /// Runs the internal target-bound background process.
     #[command(name = "_agent", hide = true)]
     Agent {

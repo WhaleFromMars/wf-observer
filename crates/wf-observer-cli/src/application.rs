@@ -89,12 +89,6 @@ pub(crate) async fn run(print_ticket: bool, shutdown_on_stdin_close: bool) -> an
     server_result
 }
 
-/// Prints the endpoint identifier shared with clients.
-pub(crate) fn print_endpoint() -> anyhow::Result<()> {
-    println!("{}", identity::load_or_create()?.public());
-    Ok(())
-}
-
 async fn wait_for_shutdown(shutdown_on_stdin_close: bool) -> anyhow::Result<()> {
     if !shutdown_on_stdin_close {
         return wait_for_operating_system_shutdown().await;

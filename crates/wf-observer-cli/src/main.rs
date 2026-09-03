@@ -9,6 +9,7 @@ mod identity;
 mod launch;
 mod paths;
 mod prelude;
+mod runtime;
 mod singleton;
 mod startup;
 mod transport;
@@ -33,11 +34,11 @@ async fn main() -> ExitCode {
 
     let result = match args.command() {
         cli::Command::Attach => launch::attach().await,
+        cli::Command::Status => runtime::print_status(),
         cli::Command::Serve {
             print_ticket,
             shutdown_on_stdin_close,
         } => application::run(print_ticket, shutdown_on_stdin_close).await,
-        cli::Command::Endpoint => application::print_endpoint(),
         cli::Command::Agent { pid, start_marker } => agent::run(pid, start_marker).await,
     };
 

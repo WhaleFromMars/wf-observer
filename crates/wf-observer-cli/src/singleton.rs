@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context as _, bail};
+use anyhow::Context as _;
 
 /// An exclusive lock held for the lifetime of the local agent.
 pub(crate) struct AgentLock {
@@ -19,6 +19,11 @@ pub(crate) struct AgentLock {
 impl AgentLock {
     /// Attempts to acquire exclusive ownership at `path`.
     pub(crate) fn acquire(path: &Path) -> anyhow::Result<Self> {
+        Self::try_acquire(path)?.context("Warframe Observer is already running")
+    }
+
+    /// Attempts to acquire ownership without treating an existing owner as an error.
+    pub(crate) fn try_acquire(path: &Path) -> anyhow::Result<Option<Self>> {
         let directory = path
             .parent()
             .context("the agent lock path does not have a parent directory")?;
@@ -34,8 +39,8 @@ impl AgentLock {
             .with_context(|| format!("failed to open {}", path.display()))?;
 
         match file.try_lock() {
-            Ok(()) => Ok(Self { file }),
-            Err(TryLockError::WouldBlock) => bail!("Warframe Observer is already running"),
+            Ok(()) => Ok(Some(Self { file })),
+            Err(TryLockError::WouldBlock) => Ok(None),
             Err(TryLockError::Error(error)) => {
                 Err(error).with_context(|| format!("failed to lock {}", path.display()))
             }

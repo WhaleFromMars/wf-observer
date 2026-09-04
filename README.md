@@ -21,6 +21,14 @@ scoop bucket add open-wf https://github.com/Open-WF/scoop-bucket
 scoop install open-wf/wf-observer
 ```
 
+Stop an attached agent before updating if neccessary because Scoop will not replace a
+running executable:
+
+```powershell
+wf-observer stop
+scoop update wf-observer
+```
+
 ### Arch Linux
 
 The prepared AUR packages are `wf-observer`, which builds from source, and

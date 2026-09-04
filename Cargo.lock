@@ -6069,7 +6069,7 @@ dependencies = [
 
 [[package]]
 name = "wf-observer-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -6659,6 +6659,8 @@ dependencies = [
  "anyhow",
  "clap",
  "fastant",
+ "semver 1.0.28",
+ "serde",
  "serde_json",
  "tempfile",
 ]

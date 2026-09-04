@@ -1,0 +1,20 @@
+# Maintainer: WhaleFromMars <oliverstevenscoughlan at protonmail dot com>
+
+pkgname=wf-observer-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Read-only Warframe process observer with an Iroh endpoint'
+arch=('x86_64')
+url='https://github.com/Open-WF/wf-observer'
+license=('MIT OR Apache-2.0')
+depends=('glibc' 'libgcc')
+provides=("wf-observer=$pkgver")
+conflicts=('wf-observer')
+source=("wf-observer-$pkgver-$CARCH-unknown-linux-gnu.tar.gz::$url/releases/download/cli-v$pkgver/wf-observer-$pkgver-$CARCH-unknown-linux-gnu.tar.gz")
+sha256sums=('@LINUX_SHA256@')
+
+package() {
+    install -Dm755 wf-observer "$pkgdir/usr/bin/wf-observer"
+    install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
+    install -Dm644 LICENSE-MIT LICENSE-APACHE -t "$pkgdir/usr/share/licenses/$pkgname"
+}

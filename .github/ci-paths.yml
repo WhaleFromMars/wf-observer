@@ -79,6 +79,7 @@ swift:
   - "examples/swift/**/Package.swift"
 
 links:
+  - ".lycheeignore"
   - added|modified: "**/*.md"
   - added|modified: "**/*.rs"
   - added|modified: "**/*.toml"

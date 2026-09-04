@@ -1,0 +1,276 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TARGET_DIR: target
+  CARGO_TERM_COLOR: always
+
+jobs:
+  metadata:
+    name: Validate CLI release
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Validate CLI version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          arguments=()
+          if [[ -n "$RELEASE_TAG" ]]; then
+            arguments+=(--tag "$RELEASE_TAG")
+          fi
+
+          version="$(
+            cargo run --locked --quiet -p xtask --
+            release check-cli "${arguments[@]}"
+          )"
+          previous_tag="$(
+            git for-each-ref \
+              --sort=-creatordate \
+              --format='%(refname:short)' \
+              'refs/tags/cli-v*' \
+              | awk -v current="$RELEASE_TAG" '$0 != current { print; exit }'
+          )"
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Build CLI (Linux x64)
+    needs: metadata
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add "$TARGET"
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-cli-linux-x64
+          save-if: false
+
+      - name: Build CLI
+        run: >-
+          cargo build --locked --release -p wf-observer-cli
+          --target "$TARGET"
+
+      - name: Smoke-test CLI
+        shell: bash
+        run: |
+          binary="target/$TARGET/release/wf-observer"
+          "$binary" --version
+          "$binary" --help >/dev/null
+          "$binary" status
+
+      - name: Package CLI
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          staging="$RUNNER_TEMP/wf-observer-cli"
+          asset="wf-observer-$VERSION-$TARGET.tar.gz"
+          mkdir --parents "$staging" release-assets
+          install --mode=755 "target/$TARGET/release/wf-observer" "$staging/wf-observer"
+          install --mode=644 README.md LICENSE-MIT LICENSE-APACHE "$staging"
+
+          epoch="$(git show --no-patch --format=%ct HEAD)"
+          tar \
+            --sort=name \
+            --mtime="@$epoch" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            --format=gnu \
+            --create \
+            --file=- \
+            --directory="$staging" \
+            . \
+            | gzip --no-name > "release-assets/$asset"
+
+      - name: Upload Linux archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-linux-x64
+          path: release-assets/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Build CLI (Windows x64)
+    needs: metadata
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TARGET: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup show active-toolchain
+          rustup target add $env:TARGET
+
+      - name: Restore Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-cli-windows-x64
+          save-if: false
+
+      - name: Build CLI
+        run: >-
+          cargo build --locked --release -p wf-observer-cli
+          --target $env:TARGET
+
+      - name: Smoke-test CLI
+        shell: pwsh
+        run: |
+          $binary = "target/$env:TARGET/release/wf-observer.exe"
+          & $binary --version
+          & $binary --help | Out-Null
+          & $binary status
+
+      - name: Package CLI
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          $staging = Join-Path $env:RUNNER_TEMP "wf-observer-cli"
+          $asset = "wf-observer-$env:VERSION-$env:TARGET.zip"
+          New-Item -ItemType Directory -Force -Path $staging, "release-assets" | Out-Null
+          Copy-Item "target/$env:TARGET/release/wf-observer.exe" $staging
+          Copy-Item "README.md", "LICENSE-MIT", "LICENSE-APACHE" $staging
+          Compress-Archive -Path (Join-Path $staging "*") -DestinationPath (Join-Path "release-assets" $asset)
+
+      - name: Upload Windows archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-windows-x64
+          path: release-assets/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  assets:
+    name: Assemble CLI release assets
+    needs: [metadata, linux, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Download platform archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: cli-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          mapfile -t archives < <(
+            find release-assets -maxdepth 1 -type f \
+              \( -name '*.tar.gz' -o -name '*.zip' \) \
+              -printf '%f\n' \
+              | sort
+          )
+          if [[ "${#archives[@]}" -ne 2 ]]; then
+            echo "Expected two CLI archives, found ${#archives[@]}" >&2
+            exit 1
+          fi
+
+          cd release-assets
+          sha256sum "${archives[@]}" > SHA256SUMS
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-release-assets
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish CLI GitHub Release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [metadata, assets]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: cli-release-assets
+          path: release-assets
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PREVIOUS_TAG: ${{ needs.metadata.outputs.previous_tag }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release '$RELEASE_TAG' already exists" >&2
+            exit 1
+          fi
+
+          arguments=(
+            --verify-tag
+            --generate-notes
+            --title "WF Observer CLI $VERSION"
+          )
+          if [[ "$VERSION" == *-* ]]; then
+            arguments+=(--prerelease)
+          fi
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            arguments+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
+          gh release create "$RELEASE_TAG" "${assets[@]}" "${arguments[@]}"

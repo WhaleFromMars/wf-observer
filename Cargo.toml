@@ -53,6 +53,7 @@ directories = { version = "6" }
 itertools = { version = "0.15" }
 tempfile = { version = "3.23" }
 pollster = { version = "1.0.1" }
+semver = { version = "1.0" }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 rustix = { version = "1.1", default-features = false }
 windows-sys = { version = "0.61", default-features = false }

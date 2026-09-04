@@ -495,6 +495,11 @@ jobs:
           boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
           [[ -n "$version" && "$version" == "$boltffi_version" ]]
 
+      - name: Validate CLI release metadata
+        run: >-
+          cargo run --locked --profile ci -p xtask --
+          release check-cli
+
   required:
     name: CI / required
     needs:

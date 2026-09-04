@@ -88,7 +88,10 @@ links:
 
 release:
   - ".github/workflows/bindings-release.yml"
+  - ".github/workflows/cli-release.yml"
   - "boltffi.release.toml"
+  - "crates/wf-observer-cli/Cargo.toml"
+  - "xtask/src/release.rs"
 
 workflows:
   - ".github/actions/**"

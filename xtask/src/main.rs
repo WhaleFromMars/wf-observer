@@ -12,6 +12,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use fastant::Instant;
 use tempfile::TempDir;
 
+mod release;
+
 const TICKET_PREFIX: &str = "WF_OBSERVER_ENDPOINT_TICKET=";
 const START_TIMEOUT: Duration = Duration::from_secs(45);
 const EXAMPLE_TIMEOUT: Duration = Duration::from_mins(5);
@@ -40,6 +42,21 @@ enum Command {
         /// Cargo profile used for generated native libraries and the local service.
         #[arg(long, default_value = "dev")]
         profile: String,
+    },
+    /// Validates and prepares repository releases.
+    Release {
+        #[command(subcommand)]
+        command: ReleaseCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ReleaseCommand {
+    /// Validates the CLI package version and an optional release tag.
+    CheckCli {
+        /// Tag being published, such as `cli-v0.1.0`.
+        #[arg(long)]
+        tag: Option<String>,
     },
 }
 
@@ -102,6 +119,9 @@ fn main() -> anyhow::Result<()> {
             python,
             profile,
         } => run_examples(&languages, no_package, &python, &profile),
+        Command::Release {
+            command: ReleaseCommand::CheckCli { tag },
+        } => release::check_cli(workspace_root()?, tag.as_deref()),
     }
 }
 

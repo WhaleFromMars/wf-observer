@@ -122,6 +122,28 @@ just binding apple --release
 just binding wasm --release
 ```
 
+## Release CLI
+
+The CLI has an independent package version in
+`crates/wf-observer-cli/Cargo.toml`. The Release CLI workflow builds Linux and
+Windows x64 archives on manual runs without publishing them. Pushing a
+`cli-v{version}` tag additionally creates a GitHub Release containing both
+binary archives and `SHA256SUMS`.
+
+The release validator rejects a tag which does not exactly match the CLI
+package version or is not newer than every existing `cli-v*` tag. Check the
+current version locally, or dry-run a prospective tag, with:
+
+```bash
+cargo run --locked -p xtask -- release check-cli
+cargo run --locked -p xtask -- release check-cli --tag cli-v0.1.0
+```
+
+See [RELEASING.md](RELEASING.md) for the complete release sequence. Binary AUR
+and Scoop publication consume these archives, while a source-based AUR package
+builds from GitHub's tag archive. Package publication is maintained separately
+from the artifact workflow.
+
 ## Link checking
 
 Rust files are scanned as plain text, which catches full URLs in doc

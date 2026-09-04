@@ -58,10 +58,7 @@ jobs:
             arguments+=(--tag "$RELEASE_TAG")
           fi
 
-          version="$(
-            cargo run --locked --quiet -p xtask --
-            release check-cli "${arguments[@]}"
-          )"
+          version="$(cargo run --locked --quiet -p xtask -- release check-cli "${arguments[@]}")"
           previous_tag="$(
             git for-each-ref \
               --sort=-creatordate \

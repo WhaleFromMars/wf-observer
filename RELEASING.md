@@ -11,7 +11,8 @@ Release bindings workflow.
 2. Run the local release validation and normal repository checks:
 
    ```bash
-   cargo run --locked -p xtask -- release check-cli --tag cli-v0.1.0
+   version="$(cargo run --quiet --locked -p xtask -- release check-cli)"
+   cargo run --locked -p xtask -- release check-cli --tag "cli-v$version"
    just check
    ```
 
@@ -19,8 +20,10 @@ Release bindings workflow.
 4. Create and push an annotated tag matching the version exactly:
 
    ```bash
-   git tag --annotate cli-v0.1.0 --message "WF Observer CLI 0.1.0"
-   git push origin cli-v0.1.0
+   version="$(cargo run --quiet --locked -p xtask -- release check-cli)"
+   tag="cli-v$version"
+   git tag --annotate "$tag" --message "WF Observer CLI $version"
+   git push origin "$tag"
    ```
 
 The Release CLI workflow validates the tag, builds and smoke-tests Linux and
@@ -34,8 +37,23 @@ instead of replacing an existing release.
 
 ## Package managers
 
-The binary AUR and Scoop releases consume the archives and checksums produced
-by the CLI workflow. The source-based AUR package downloads GitHub's archive
-for the matching `cli-v{version}` tag and pins its checksum in the `PKGBUILD`.
-Package publication automation is intentionally maintained separately so a
-packaging failure cannot alter or replace the canonical release assets.
+Stable CLI releases update `wf-observer` in `Open-WF/scoop-bucket`.
+Prereleases are not sent to package managers.
+
+The `wf-observer` and `wf-observer-bin` AUR packages are not currently
+published because new account registration is unavailable and the repository
+maintainers do not yet have an AUR account. Their templates and automation are
+ready but disabled with a `false` guard on the `publish-aur` job in the CLI
+release workflow. Until registration reopens, both packages can be built and
+installed locally using the temporary flow in `packaging/README.md`.
+
+Scoop publication requires `SCOOP_BUCKET_TOKEN`, a fine-grained token with
+Contents write access to `Open-WF/scoop-bucket`.
+
+Enabling AUR publication additionally requires `AUR_SSH_PRIVATE_KEY`, containing
+a dedicated SSH key registered with the maintainers' AUR account.
+
+A manual Release CLI workflow run for a stable version renders package metadata
+without publishing it. Download the `cli-package-metadata` artifact to review
+its structure. A tagged run regenerates the checksums from the published
+archives before publication.

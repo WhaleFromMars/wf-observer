@@ -1,6 +1,8 @@
 name: SemVer checks
 
 on:
+  # Enable this after a workspace library crate has a crates.io release to use
+  # as the compatibility baseline. CLI-only GitHub releases do not provide one.
   # pull_request:
   #   branches: [main]
   workflow_call:

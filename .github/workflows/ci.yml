@@ -31,6 +31,7 @@ jobs:
       links: ${{ steps.plan.outputs.links }}
       link_files: ${{ steps.filter.outputs.links_files }}
       release: ${{ steps.plan.outputs.release }}
+      packages: ${{ steps.plan.outputs.packages }}
       workflows: ${{ steps.plan.outputs.workflows }}
 
     steps:
@@ -60,6 +61,7 @@ jobs:
           SWIFT_CHANGED: ${{ steps.filter.outputs.swift }}
           LINKS_CHANGED: ${{ steps.filter.outputs.links }}
           RELEASE_CHANGED: ${{ steps.filter.outputs.release }}
+          PACKAGES_CHANGED: ${{ steps.filter.outputs.packages }}
           WORKFLOWS_CHANGED: ${{ steps.filter.outputs.workflows }}
           CI_WORKFLOW_CHANGED: ${{ steps.filter.outputs.ci_workflow }}
           CHANGED_FILES: ${{ steps.filter.outputs.all_files }}
@@ -91,10 +93,11 @@ jobs:
           swift="$(any_true "$bindings_common" "$SWIFT_CHANGED")"
           links="$LINKS_CHANGED"
           release="$(any_true "$CI_WORKFLOW_CHANGED" "$RELEASE_CHANGED")"
+          packages="$(any_true "$CI_WORKFLOW_CHANGED" "$PACKAGES_CHANGED")"
           workflows="$WORKFLOWS_CHANGED"
 
           # A new runtime/build path should fail safe until it is explicitly mapped.
-          if ! is_true "$(any_true "$rust" "$dioxus" "$jvm" "$csharp" "$python" "$wasm" "$swift" "$release" "$workflows")" \
+          if ! is_true "$(any_true "$rust" "$dioxus" "$jvm" "$csharp" "$python" "$wasm" "$swift" "$release" "$packages" "$workflows")" \
             && (( ${ALL_COUNT:-0} > ${NON_RUNTIME_COUNT:-0} )); then
             rust=true
             echo "::warning::Unknown runtime path detected; selecting core Rust CI"
@@ -110,6 +113,7 @@ jobs:
             echo "swift=$swift"
             echo "links=$links"
             echo "release=$release"
+            echo "packages=$packages"
             echo "workflows=$workflows"
           } >> "$GITHUB_OUTPUT"
 
@@ -127,6 +131,7 @@ jobs:
             echo "| Swift bindings | $swift |"
             echo "| Links | $links |"
             echo "| Release metadata | $release |"
+            echo "| Package metadata | $packages |"
             echo "| Workflow lint | $workflows |"
             echo
             echo "Changed files (shell escaped):"
@@ -500,6 +505,56 @@ jobs:
           cargo run --locked --profile ci -p xtask --
           release check-cli
 
+  packages:
+    name: CI / Package metadata
+    needs: plan
+    if: needs.plan.outputs.packages == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install packaging tools
+        run: |
+          pacman-key --init
+          pacman --sync --refresh --sysupgrade --needed --noconfirm git jq namcap
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Render package metadata
+        shell: bash
+        run: |
+          checksum="$(printf '%064d' 0)"
+          bash packaging/render.sh \
+            0.1.0 \
+            "$checksum" \
+            "$checksum" \
+            "$checksum" \
+            /tmp/package-metadata
+
+      - name: Validate AUR metadata
+        shell: bash
+        run: |
+          useradd --create-home package-validator
+          chown --recursive package-validator:package-validator \
+            /tmp/package-metadata/aur
+
+          for package in wf-observer wf-observer-bin; do
+            repository="/tmp/package-metadata/aur/$package"
+            # $1 expands in the child shell.
+            # shellcheck disable=SC2016
+            runuser -u package-validator -- bash -c '
+              set -euo pipefail
+              cd "$1"
+              makepkg --printsrcinfo > .SRCINFO
+              namcap PKGBUILD
+            ' _ "$repository"
+          done
+
   required:
     name: CI / required
     needs:
@@ -511,6 +566,7 @@ jobs:
       - bindings-swift
       - links
       - release-metadata
+      - packages
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -533,6 +589,8 @@ jobs:
           LINKS_RESULT: ${{ needs.links.result }}
           RUN_RELEASE: ${{ needs.plan.outputs.release }}
           RELEASE_RESULT: ${{ needs.release-metadata.result }}
+          RUN_PACKAGES: ${{ needs.plan.outputs.packages }}
+          PACKAGES_RESULT: ${{ needs.packages.result }}
         run: |
           failures=()
 
@@ -559,6 +617,7 @@ jobs:
           require_result "$RUN_SWIFT" "$SWIFT_RESULT" "Swift bindings"
           require_result "$RUN_LINKS" "$LINKS_RESULT" "Links"
           require_result "$RUN_RELEASE" "$RELEASE_RESULT" "Release metadata"
+          require_result "$RUN_PACKAGES" "$PACKAGES_RESULT" "Package metadata"
 
           if (( ${#failures[@]} > 0 )); then
             printf '%s\n' "${failures[@]}" >&2

@@ -128,7 +128,9 @@ The CLI has an independent package version in
 `crates/wf-observer-cli/Cargo.toml`. The Release CLI workflow builds Linux and
 Windows x64 archives on manual runs without publishing them. Pushing a
 `cli-v{version}` tag additionally creates a GitHub Release containing both
-binary archives and `SHA256SUMS`.
+binary archives and `SHA256SUMS`. Stable versions also produce rendered AUR
+and Scoop metadata; tagged releases publish that metadata to the configured
+package repositories.
 
 The release validator rejects a tag which does not exactly match the CLI
 package version or is not newer than every existing `cli-v*` tag. Check the
@@ -136,7 +138,8 @@ current version locally, or dry-run a prospective tag, with:
 
 ```bash
 cargo run --locked -p xtask -- release check-cli
-cargo run --locked -p xtask -- release check-cli --tag cli-v0.1.0
+version="$(cargo run --quiet --locked -p xtask -- release check-cli)"
+cargo run --locked -p xtask -- release check-cli --tag "cli-v$version"
 ```
 
 See [RELEASING.md](RELEASING.md) for the complete release sequence. Binary AUR
@@ -169,8 +172,9 @@ caches.
 ## SemVer checking
 
 Cargo SemVer Checks compares the public API against the latest published
-version on crates.io. Its pull request trigger is disabled until a release
-exists.
+version on crates.io. Its pull request trigger is disabled because none of the
+workspace library crates has a published crates.io baseline. CLI GitHub
+releases do not provide that baseline.
 
 Requires [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
 to be installed locally.

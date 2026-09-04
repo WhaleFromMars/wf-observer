@@ -93,6 +93,10 @@ release:
   - "crates/wf-observer-cli/Cargo.toml"
   - "xtask/src/release.rs"
 
+packages:
+  - ".github/workflows/cli-release.yml"
+  - "packaging/**"
+
 workflows:
   - ".github/actions/**"
   - ".github/workflows/**"

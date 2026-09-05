@@ -1,11 +1,11 @@
 {
     "version": "@VERSION@",
     "description": "Read-only Warframe process observer with an Iroh endpoint",
-    "homepage": "https://github.com/Open-WF/wf-observer",
+    "homepage": "https://github.com/OpenGameInterop/wf-observer",
     "license": "MIT|Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/Open-WF/wf-observer/releases/download/cli-v@VERSION@/wf-observer-@VERSION@-x86_64-pc-windows-msvc.zip",
+            "url": "https://github.com/OpenGameInterop/wf-observer/releases/download/cli-v@VERSION@/wf-observer-@VERSION@-x86_64-pc-windows-msvc.zip",
             "hash": "@WINDOWS_SHA256@"
         }
     },
@@ -15,14 +15,14 @@
         "if ($LASTEXITCODE -ne 0) { throw \"wf-observer could not stop its background agent\" }"
     ],
     "checkver": {
-        "url": "https://api.github.com/repos/Open-WF/wf-observer/releases?per_page=100",
+        "url": "https://api.github.com/repos/OpenGameInterop/wf-observer/releases?per_page=100",
         "jsonpath": "$[?(@.prerelease == false)].tag_name",
         "regex": "^cli-v(?<version>[\\d]+\\.[\\d]+\\.[\\d]+)$"
     },
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/Open-WF/wf-observer/releases/download/cli-v$version/wf-observer-$version-x86_64-pc-windows-msvc.zip"
+                "url": "https://github.com/OpenGameInterop/wf-observer/releases/download/cli-v$version/wf-observer-$version-x86_64-pc-windows-msvc.zip"
             }
         },
         "hash": {

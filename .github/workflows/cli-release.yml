@@ -524,7 +524,7 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           bucket="$RUNNER_TEMP/scoop-bucket"
-          git clone --depth 1 https://github.com/Open-WF/scoop-bucket.git "$bucket"
+          git clone --depth 1 https://github.com/OpenGameInterop/scoop-bucket.git "$bucket"
           install --mode=644 \
             package-metadata/scoop/wf-observer.json \
             "$bucket/bucket/wf-observer.json"

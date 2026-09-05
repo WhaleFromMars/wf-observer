@@ -17,8 +17,8 @@ Use `wf-observer stop` to request a shutdown without closing Warframe.
 ### Windows (Scoop)
 
 ```powershell
-scoop bucket add open-wf https://github.com/Open-WF/scoop-bucket
-scoop install open-wf/wf-observer
+scoop bucket add opengameinterop https://github.com/OpenGameInterop/scoop-bucket
+scoop install opengameinterop/wf-observer
 ```
 
 Stop an attached agent before updating if neccessary because Scoop will not replace a
@@ -37,7 +37,7 @@ published because new AUR account registration is unavailable and I do not yet h
 
 Until AUR publication is available, download the Linux archive from the latest
 `cli-v*` entry on the
-[GitHub releases page](https://github.com/Open-WF/wf-observer/releases), then
+[GitHub releases page](https://github.com/OpenGameInterop/wf-observer/releases), then
 install its executable:
 
 ```bash

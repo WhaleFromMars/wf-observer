@@ -390,11 +390,9 @@ jobs:
           mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
           gh release create "$RELEASE_TAG" "${assets[@]}" "${arguments[@]}"
 
-  publish-aur:
-    name: Publish CLI packages to the AUR
-    # Remove the false guard when AUR account registration is available again.
+  publish-arch:
+    name: Publish CLI Arch packages
     if: >-
-      false &&
       github.event_name == 'push' &&
       github.ref_type == 'tag' &&
       !contains(needs.metadata.outputs.version, '-')
@@ -408,7 +406,7 @@ jobs:
       - name: Install packaging tools
         run: |
           pacman-key --init
-          pacman --sync --refresh --sysupgrade --needed --noconfirm git namcap openssh
+          pacman --sync --refresh --sysupgrade --needed --noconfirm git namcap openssh curl
 
       - name: Download package metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -416,7 +414,13 @@ jobs:
           name: cli-package-metadata
           path: package-metadata
 
-      - name: Configure AUR authentication
+      - name: Create publisher user
+        run: useradd --create-home publisher
+
+      - name: Configure AUR SSH authentication
+        # Set the AUR_PUBLISHING_ENABLED repository variable to "true" once
+        # AUR account registration is available again.
+        if: vars.AUR_PUBLISHING_ENABLED == 'true'
         shell: bash
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -426,7 +430,6 @@ jobs:
             exit 1
           fi
 
-          useradd --create-home publisher
           install --directory --owner=publisher --group=publisher --mode=700 \
             /home/publisher/.ssh
 
@@ -455,6 +458,7 @@ jobs:
             41898282+github-actions[bot]@users.noreply.github.com
 
       - name: Validate AUR repositories
+        if: vars.AUR_PUBLISHING_ENABLED == 'true'
         shell: bash
         run: |
           install --directory --owner=publisher --group=publisher /tmp/aur
@@ -483,6 +487,7 @@ jobs:
           done
 
       - name: Push AUR repositories
+        if: vars.AUR_PUBLISHING_ENABLED == 'true'
         shell: bash
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
@@ -499,6 +504,69 @@ jobs:
               --message "Update to $VERSION"
             runuser -u publisher -- git -C "$repository" push origin HEAD:master
           done
+
+      - name: Build wf-observer-bin package
+        shell: bash
+        run: |
+          repository=/tmp/dgit/wf-observer-bin
+          install --directory --owner=publisher --group=publisher /tmp/dgit "$repository"
+          install \
+            --owner=publisher \
+            --group=publisher \
+            --mode=644 \
+            package-metadata/aur/wf-observer-bin/PKGBUILD \
+            "$repository/PKGBUILD"
+
+          # $1 expands in the child shell.
+          # shellcheck disable=SC2016
+          runuser -u publisher -- bash -c '
+            set -euo pipefail
+            cd "$1"
+            makepkg --noconfirm
+          ' _ "$repository"
+
+      - name: Upload wf-observer-bin package to dgit
+        continue-on-error: true
+        shell: bash
+        env:
+          DGIT_USER: ${{ secrets.DGIT_USER }}
+          DGIT_PASSWORD: ${{ secrets.DGIT_PASSWORD }}
+        run: |
+          if [[ -z "$DGIT_USER" || -z "$DGIT_PASSWORD" ]]; then
+            echo "::error::DGIT_USER or DGIT_PASSWORD is not configured"
+            exit 1
+          fi
+
+          package="$(find /tmp/dgit/wf-observer-bin -maxdepth 1 -name '*.pkg.tar.zst')"
+          if [[ -z "$package" ]]; then
+            echo "::error::no .pkg.tar.zst was produced for wf-observer-bin"
+            exit 1
+          fi
+
+          response="$(mktemp)"
+          set +e
+          status="$(curl \
+            --silent \
+            --show-error \
+            --output "$response" \
+            --write-out '%{http_code}' \
+            --request PUT \
+            --user "$DGIT_USER:$DGIT_PASSWORD" \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$package" \
+            "https://git.denaerium.com/api/packages/$DGIT_USER/arch/dgit")"
+          curl_exit=$?
+          set -e
+
+          if [[ "$curl_exit" -ne 0 ]]; then
+            echo "::error::failed to reach the dgit package registry (curl exit $curl_exit)"
+            exit 1
+          elif [[ "$status" == "409" ]]; then
+            echo "wf-observer-bin $package is already present on dgit"
+          elif [[ "$status" != 2* ]]; then
+            echo "::error::failed to upload $package to the dgit package registry (HTTP $status): $(cat "$response")"
+            exit 1
+          fi
 
   publish-scoop:
     name: Publish CLI package to Scoop

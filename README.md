@@ -45,6 +45,14 @@ mkdir wf-observer-release
 tar -xzf wf-observer-*-x86_64-unknown-linux-gnu.tar.gz -C wf-observer-release
 sudo install -Dm755 wf-observer-release/wf-observer /usr/local/bin/wf-observer
 ```
+An alternative to AUR exists in a third-party Arch repository [here](https://git.denaerium.com/Denaerium/-/packages/arch/wf-observer-bin/). 
+Instructions on how to add the repository and use it can be found [here](https://git.denaerium.com/Denaerium/-/packages/arch/wf-observer-bin/).
+This external repository makes no guarantees on availability, but should be
+an acceptable mostly-always up alternative if AUR temporarily experiences outages.
+
+Additionally, the external repository also hosts a `wf-observer-git` package which
+updates on each commit made to `main`. It is available [here](https://git.denaerium.com/Denaerium/-/packages/arch/wf-observer-git/).
+It updates on a timer, and a check is made once every 30 minutes.
 
 ## Running the example integration
 

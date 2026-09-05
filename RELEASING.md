@@ -22,7 +22,7 @@ Release bindings workflow.
    ```
 
 3. Verify that the tagged Release CLI workflow publishes the GitHub Release
-   and updates `Open-WF/scoop-bucket`.
+   and updates `OpenGameInterop/scoop-bucket`.
 
 The Release CLI workflow validates the tag, builds and smoke-tests Linux and
 Windows x64 executables, packages both with the repository licences and README,
@@ -45,7 +45,7 @@ uninstallation. These checks are not required for an ordinary version release.
 
 ## Package managers
 
-Stable CLI releases update `wf-observer` in `Open-WF/scoop-bucket`.
+Stable CLI releases update `wf-observer` in `OpenGameInterop/scoop-bucket`.
 Prereleases are not sent to package managers.
 
 The `wf-observer` and `wf-observer-bin` AUR packages are not currently
@@ -55,7 +55,7 @@ ready but disabled with a `false` guard on the `publish-aur` job in the CLI
 release workflow until registration reopens.
 
 Scoop publication requires `SCOOP_BUCKET_TOKEN`, a fine-grained token with
-Contents write access to `Open-WF/scoop-bucket`.
+Contents write access to `OpenGameInterop/scoop-bucket`.
 
 Enabling AUR publication additionally requires `AUR_SSH_PRIVATE_KEY`, containing
 a dedicated SSH key registered with the maintainers' AUR account.
